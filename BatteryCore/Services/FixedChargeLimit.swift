@@ -1,0 +1,69 @@
+import Foundation
+
+/// The "Fixed Charge Limit" user-facing mode: "Set my Mac to 80%".
+///
+/// This is a presentation layer over the hysteresis policy — the mechanism
+/// every backend implements (the firmware-managed limit programs it as
+/// bfD0/bfE0 and the SMC enforces the band autonomously). The user picks a
+/// limit and an optional resume threshold; charging stops at/above the
+/// limit and resumes once the battery falls to the resume threshold. The
+/// deliberate gap prevents rapid charge/pause cycling around a single
+/// percentage.
+public enum FixedChargeLimit {
+
+    /// The advertised one-tap presets. 100% is included for users who want
+    /// to disable limiting by charging fully (equivalent to passthrough
+    /// with an explicit full charge).
+    public static let presetPercents: [Int] = [60, 70, 80, 90, 100]
+
+    /// Whether `upper` is one of the advertised presets (false → Custom).
+    public static func isPreset(_ upper: Int) -> Bool {
+        presetPercents.contains(upper)
+    }
+
+    /// Bounds for the resume threshold given an upper limit. Keeping the
+    /// resume threshold at least `minimumResumeThreshold` below the limit
+    /// satisfies firmware-limit validation (both ≥ 5, gap ≥ 1) and keeps a
+    /// meaningful band.
+    public static let minimumResumeThreshold = 5
+
+    public static func allowedResumeRange(forUpper upper: Int) -> ClosedRange<Int> {
+        let clampedUpper = min(max(upper, 1), 100)
+        let low = minimumResumeThreshold
+        let high = max(low, clampedUpper - 1)
+        return low...high
+    }
+
+    /// Default resume threshold for a limit: two points below the limit,
+    /// clamped into the allowed range (e.g. 80 → 78, 60 → 58, 100 → 98).
+    /// The battery rests AT the limit and only tops up briefly after
+    /// drifting a couple of points — the behavior users expect from "keep
+    /// my Mac around 80%" — instead of coasting in a wide band.
+    public static func defaultResumeThreshold(forUpper upper: Int) -> Int {
+        let clamped = min(max(upper, 1), 100)
+        return min(max(clamped - 2, minimumResumeThreshold), clamped - 1)
+    }
+
+    /// Build the policy for a fixed charge limit. `resume` defaults to the
+    /// narrow default band (limit − 2); an explicit value is clamped into
+    /// the valid range. The result is always a valid hysteresis policy —
+    /// the same shape the verified firmware-limit profile programs into
+    /// bfD0/bfE0.
+    public static func policy(upper: Int, resume: Int? = nil) -> ChargingPolicy {
+        let clampedUpper = min(max(upper, 1), 100)
+        let threshold = resume.map { clampedResume($0, upper: clampedUpper) }
+            ?? defaultResumeThreshold(forUpper: clampedUpper)
+        return ChargingPolicy.sanitized(upper: clampedUpper, lower: threshold)
+    }
+
+    /// Clamp a resume threshold into the allowed range for `upper`.
+    public static func clampedResume(_ resume: Int, upper: Int) -> Int {
+        let range = allowedResumeRange(forUpper: upper)
+        return min(max(resume, range.lowerBound), range.upperBound)
+    }
+
+    /// Human explanation shown in the UI for the current selection.
+    public static func explanation(upper: Int, resume: Int) -> String {
+        "The battery rests at \(upper)%. If it drifts down to \(resume)%, charging quietly tops it back up to \(upper)% and stops. Enforcement is verified against the battery's actual state."
+    }
+}

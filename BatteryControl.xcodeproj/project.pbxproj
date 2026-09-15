@@ -1,0 +1,535 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BC000101000000000000001A /* BatteryCore in Frameworks */ = {isa = PBXBuildFile; productRef = BC0002010000000000000001 /* BatteryCore */; };
+		BC000102000000000000001A /* BatteryCore in Frameworks */ = {isa = PBXBuildFile; productRef = BC0002020000000000000001 /* BatteryCore */; };
+		BC000103000000000000001A /* BatteryCore in Frameworks */ = {isa = PBXBuildFile; productRef = BC0002030000000000000001 /* BatteryCore */; };
+		BC000104000000000000001A /* com.batterycontrol.daemon in Embed LaunchDaemons */ = {isa = PBXBuildFile; fileRef = BC000702000000000000001A /* com.batterycontrol.daemon */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BC000105000000000000001A /* com.batterycontrol.daemon.plist in Embed LaunchDaemons */ = {isa = PBXBuildFile; fileRef = BC001401000000000000001A /* com.batterycontrol.daemon.plist */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BC000301000000000000001A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC000401000000000000001A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BC000501000000000000001A;
+			remoteInfo = BatteryControlDaemon;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BC000601000000000000001A /* Embed LaunchDaemons */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchDaemons;
+			dstSubfolderSpec = 1;
+			files = (
+				BC000104000000000000001A /* com.batterycontrol.daemon in Embed LaunchDaemons */,
+				BC000105000000000000001A /* com.batterycontrol.daemon.plist in Embed LaunchDaemons */,
+			);
+			name = "Embed LaunchDaemons";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		BC000701000000000000001A /* BatteryControl.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BatteryControl.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC000702000000000000001A /* com.batterycontrol.daemon */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "com.batterycontrol.daemon"; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC000703000000000000001A /* BatteryCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BatteryCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC001401000000000000001A /* com.batterycontrol.daemon.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "com.batterycontrol.daemon.plist"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BC000801000000000000001A /* BatteryControl */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = BatteryControl;
+			sourceTree = "<group>";
+		};
+		BC000802000000000000001A /* Helper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Helper;
+			sourceTree = "<group>";
+		};
+		BC000804000000000000001A /* Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BC000901000000000000001A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BC000101000000000000001A /* BatteryCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC000902000000000000001A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				BC000102000000000000001A /* BatteryCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC000903000000000000001A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				BC000103000000000000001A /* BatteryCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BC000A01000000000000001A = {
+			isa = PBXGroup;
+			children = (
+				BC000801000000000000001A /* BatteryControl */,
+				BC000802000000000000001A /* Helper */,
+				BC000803000000000000001A /* Support */,
+				BC000804000000000000001A /* Tests */,
+				BC000B01000000000000001A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BC000803000000000000001A /* Support */ = {
+			isa = PBXGroup;
+			children = (
+				BC001401000000000000001A /* com.batterycontrol.daemon.plist */,
+			);
+			path = Support;
+			sourceTree = "<group>";
+		};
+		BC000B01000000000000001A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BC000701000000000000001A /* BatteryControl.app */,
+				BC000702000000000000001A /* com.batterycontrol.daemon */,
+				BC000703000000000000001A /* BatteryCoreTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BC000C01000000000000001A /* BatteryControl */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC000D01000000000000001A /* Build configuration list for PBXNativeTarget "BatteryControl" */;
+			buildPhases = (
+				BC000E01000000000000001A /* Sources */,
+				BC000901000000000000001A /* Frameworks */,
+				BC000F01000000000000001A /* Resources */,
+				BC000601000000000000001A /* Embed LaunchDaemons */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BC001001000000000000001A /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BC000801000000000000001A /* BatteryControl */,
+			);
+			name = BatteryControl;
+			packageProductDependencies = (
+				BC0002010000000000000001 /* BatteryCore */,
+			);
+			productName = BatteryControl;
+			productReference = BC000701000000000000001A /* BatteryControl.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BC000501000000000000001A /* BatteryControlDaemon */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC000D02000000000000001A /* Build configuration list for PBXNativeTarget "BatteryControlDaemon" */;
+			buildPhases = (
+				BC000E02000000000000001A /* Sources */,
+				BC000902000000000000001A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BC000802000000000000001A /* Helper */,
+			);
+			name = BatteryControlDaemon;
+			packageProductDependencies = (
+				BC0002020000000000000001 /* BatteryCore */,
+			);
+			productName = "com.batterycontrol.daemon";
+			productReference = BC000702000000000000001A /* com.batterycontrol.daemon */;
+			productType = "com.apple.product-type.tool";
+		};
+		BC000502000000000000001A /* BatteryCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC000D03000000000000001A /* Build configuration list for PBXNativeTarget "BatteryCoreTests" */;
+			buildPhases = (
+				BC000E03000000000000001A /* Sources */,
+				BC000903000000000000001A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BC000804000000000000001A /* Tests */,
+			);
+			name = BatteryCoreTests;
+			packageProductDependencies = (
+				BC0002030000000000000001 /* BatteryCore */,
+			);
+			productName = BatteryCoreTests;
+			productReference = BC000703000000000000001A /* BatteryCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BC000401000000000000001A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					BC000C01000000000000001A = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					BC000501000000000000001A = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					BC000502000000000000001A = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = BC000D04000000000000001A /* Build configuration list for PBXProject "BatteryControl" */;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BC000A01000000000000001A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BC00130000000000000001A /* XCLocalSwiftPackageReference "BatteryCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BC000B01000000000000001A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BC000C01000000000000001A /* BatteryControl */,
+				BC000501000000000000001A /* BatteryControlDaemon */,
+				BC000502000000000000001A /* BatteryCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BC000E01000000000000001A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC000E02000000000000001A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC000E03000000000000001A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BC001001000000000000001A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BC000501000000000000001A /* BatteryControlDaemon */;
+			targetProxy = BC000301000000000000001A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		BC001101000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BC001102000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BC001201000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.batterycontrol.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Debug;
+		};
+		BC001202000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.batterycontrol.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Release;
+		};
+		BC001203000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../lib",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_NAME = "com.batterycontrol.daemon";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Debug;
+		};
+		BC001204000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../lib",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_NAME = "com.batterycontrol.daemon";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+			};
+			name = Release;
+		};
+		BC001205000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.batterycontrol.tests;
+				PRODUCT_NAME = "BatteryCoreTests";
+				SWIFT_VERSION = 5.0;
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Debug;
+		};
+		BC001206000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 372AL5TM6J;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.batterycontrol.tests;
+				PRODUCT_NAME = "BatteryCoreTests";
+				SWIFT_VERSION = 5.0;
+				WRAPPER_EXTENSION = xctest;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BC000D01000000000000001A /* Build configuration list for PBXNativeTarget "BatteryControl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC001201000000000000001A /* Debug */,
+				BC001202000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC000D02000000000000001A /* Build configuration list for PBXNativeTarget "BatteryControlDaemon" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC001203000000000000001A /* Debug */,
+				BC001204000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC000D03000000000000001A /* Build configuration list for PBXNativeTarget "BatteryCoreTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC001205000000000000001A /* Debug */,
+				BC001206000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BC000D04000000000000001A /* Build configuration list for PBXProject "BatteryControl" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC001101000000000000001A /* Debug */,
+				BC001102000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BC00130000000000000001A /* XCLocalSwiftPackageReference "BatteryCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BC0002010000000000000001 /* BatteryCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BatteryCore;
+		};
+		BC0002020000000000000001 /* BatteryCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BatteryCore;
+		};
+		BC0002030000000000000001 /* BatteryCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BatteryCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BC000401000000000000001A /* Project object */;
+}

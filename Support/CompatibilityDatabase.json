@@ -1,0 +1,65 @@
+{
+  "schemaVersion" : 1,
+  "profiles" : [
+    {
+      "id" : "apple-silicon-20xxx-firmware-limit",
+      "title" : "20xxx-firmware firmware-managed charge limit (bfF0/bfD0/bfE0)",
+      "controlFamily" : "firmwareLimit",
+      "keyProfile" : {
+        "chargingKeys" : [],
+        "adapterKeys" : ["CHIE", "CH0J"],
+        "firmwareLimitKeys" : ["bfF0", "bfD0", "bfE0"],
+        "chargingInhibitValue" : 0,
+        "adapterCutValue" : 8,
+        "firmwareLimitActivationOff" : 0,
+        "firmwareLimitActivationActive" : 2,
+        "limitPercentEncodingIsLittleEndian" : true,
+        "requiresDeactivateBeforeWrite" : true
+      },
+      "evidence" : {
+        "chip" : "Apple M3",
+        "modelIdentifier" : "Mac15,13",
+        "systemFirmwareBuild" : "20457.1.29",
+        "osVersion" : "macOS 15.8",
+        "osBuild" : "24H23",
+        "provenBehavior" : [
+          "bfF0 = 0x00 inactive / 0x02 active (ui8 activation)",
+          "bfD0 = upper percentage (ui32, little-endian)",
+          "bfE0 = lower percentage (ui32, little-endian)",
+          "Write sequence: deactivate (bfF0=0) → upper → lower → activate (bfF0=2)",
+          "Every write read-back verified, per step and after activation",
+          "Failed verification automatically deactivates the limit",
+          "Charging refused above the upper limit with wall power connected (-390 mA discharge at 92% while AC attached)",
+          "Limit state enforced by the SMC autonomously; read identically across processes"
+        ],
+        "verifiedOn" : "2026-09-13"
+      },
+      "notes" : [
+        "Classic CH0B/CH0C/CH0I/CHTE keys are absent on this firmware generation.",
+        "SMC reports unpopulated (size 0) key metadata for live keys; presence must be decided by direct reads.",
+        "Verified on ONE machine/build. Every 20xxx firmware must not be assumed to behave identically — new builds start at compatibleByCapability and are promoted only with evidence.",
+        "CHIE cuts inflow with value 0x08 (CH0I/CH0J use 0x01) — never write 0x01 to CHIE."
+      ]
+    },
+    {
+      "id" : "apple-silicon-legacy-smc-inhibit",
+      "title" : "Legacy Apple Silicon SMC charge inhibit (CH0B/CH0C + CH0I)",
+      "controlFamily" : "legacy",
+      "keyProfile" : {
+        "chargingKeys" : ["CH0B", "CH0C"],
+        "adapterKeys" : ["CH0I"],
+        "firmwareLimitKeys" : [],
+        "chargingInhibitValue" : 2,
+        "adapterCutValue" : 1,
+        "limitPercentEncodingIsLittleEndian" : false,
+        "requiresDeactivateBeforeWrite" : false
+      },
+      "evidence" : null,
+      "notes" : [
+        "Semantics documented by MIT-licensed projects (battery-limiter/BatFi) on pre-20xxx Apple Silicon firmware.",
+        "Absent on 20xxx-firmware machines such as the verified M3 profile.",
+        "Promotable to verified as community hardware evidence arrives via --export-compat-report."
+      ]
+    }
+  ]
+}
