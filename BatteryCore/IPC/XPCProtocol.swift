@@ -71,10 +71,16 @@ public struct ApplyPolicyRequest: Codable, Equatable, Sendable {
 public struct StartForceDischargeRequest: Codable, Equatable, Sendable {
     public var targetPercent: Int
     public var floorPercent: Int
+    /// True only when the user explicitly consented (UI confirmation) to a
+    /// discharge floor below the safety floor, accepting accelerated
+    /// battery degradation. The daemon independently validates the floor
+    /// against the consent flag.
+    public var belowFloorConsent: Bool
 
-    public init(targetPercent: Int, floorPercent: Int) {
+    public init(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool = false) {
         self.targetPercent = targetPercent
         self.floorPercent = floorPercent
+        self.belowFloorConsent = belowFloorConsent
     }
 }
 

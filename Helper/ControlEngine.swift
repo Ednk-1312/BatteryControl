@@ -276,7 +276,7 @@ final class ControlEngine {
         }
 
         // Force-discharge session bookkeeping.
-        if case .forceDischarge(let target, let floor) = override {
+        if case .forceDischarge(let target, let floor, _) = override {
             let stopPoint = max(target, ChargingPolicyEngine.effectiveDischargeFloor(requested: floor))
             if readings.percentage <= stopPoint {
                 DaemonLog.info(
@@ -307,7 +307,18 @@ final class ControlEngine {
             }
         }
 
-        return ChargingPolicyEngine.decide(readings: readings, policy: state.policy, override: override)
+        // Consent travels with the persisted override so the safety floor
+        // stays removed across daemon restarts for the active session only.
+        var belowFloorConsent = false
+        if case .forceDischarge(_, _, let consent) = override {
+            belowFloorConsent = consent
+        }
+        return ChargingPolicyEngine.decide(
+            readings: readings,
+            policy: state.policy,
+            override: override,
+            belowFloorConsent: belowFloorConsent
+        )
     }
 
     // MARK: Apply + verify
@@ -516,13 +527,29 @@ final class ControlEngine {
         return true
     }
 
-    func startForceDischarge(targetPercent: Int, floorPercent: Int) -> Bool {
+    func startForceDischarge(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool = false) -> Bool {
         guard isPlatformSupported else { return false }
         let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: floorPercent)
         let target = min(max(targetPercent, 1), 100)
-        // Never discharge toward a target below the safety floor.
+        // Never discharge toward a target below the floor.
         guard target >= floor else { return false }
-        store.update { $0.override = .forceDischarge(targetPercent: target, floorPercent: floor) }
+        // Below-safety-floor sessions require explicit user consent; without
+        // it the floor is clamped back up to the safety floor.
+        let consented = ChargingPolicyEngine.requiresBelowFloorConsent(floor: floor) && belowFloorConsent
+        let effectiveFloor = consented ? floor : max(floor, ChargingPolicyEngine.minimumDischargeFloor)
+        store.update {
+            $0.override = .forceDischarge(
+                targetPercent: target,
+                floorPercent: effectiveFloor,
+                belowFloorConsent: consented
+            )
+        }
+        if consented {
+            DaemonLog.warning(
+                "Force discharge below the safety floor (floor \(effectiveFloor)%, target \(target)%): user accepted accelerated battery degradation.",
+                operation: "forceDischarge"
+            )
+        }
         tickNow(reason: .userRequest)
         return true
     }

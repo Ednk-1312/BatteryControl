@@ -164,12 +164,26 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
             return
         }
         let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: request.floorPercent)
-        guard request.targetPercent >= floor else {
-            reply(ack(false, "The discharge target is below the safe floor (\(floor)%)."))
+        // Consent integrity: a below-safety-floor floor requires the explicit
+        // consent flag from the client — and the client must be the app this
+        // daemon already authenticated on connection.
+        if ChargingPolicyEngine.requiresBelowFloorConsent(floor: floor), !request.belowFloorConsent {
+            reply(ack(false, "A discharge below \(ChargingPolicyEngine.minimumDischargeFloor)% requires explicit confirmation."))
             return
         }
-        let ok = engine.startForceDischarge(targetPercent: request.targetPercent, floorPercent: request.floorPercent)
-        reply(ack(ok, ok ? "Force discharge to \(request.targetPercent)% started." : "Force discharge could not be started."))
+        guard request.targetPercent >= floor else {
+            reply(ack(false, "The discharge target is below the discharge floor (\(floor)%)."))
+            return
+        }
+        let ok = engine.startForceDischarge(
+            targetPercent: request.targetPercent,
+            floorPercent: request.floorPercent,
+            belowFloorConsent: request.belowFloorConsent
+        )
+        let floorNote = ChargingPolicyEngine.requiresBelowFloorConsent(floor: floor)
+            ? " Safety floor removed — this accelerates battery degradation."
+            : ""
+        reply(ack(ok, ok ? "Force discharge to \(request.targetPercent)% started." + floorNote : "Force discharge could not be started."))
     }
 
     func startForceCharge(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void) {

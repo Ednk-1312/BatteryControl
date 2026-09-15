@@ -59,8 +59,12 @@ final class DaemonClient {
         }
     }
 
-    func startForceDischarge(targetPercent: Int, floorPercent: Int) async -> OperationAck? {
-        let request = StartForceDischargeRequest(targetPercent: targetPercent, floorPercent: floorPercent)
+    func startForceDischarge(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool = false) async -> OperationAck? {
+        let request = StartForceDischargeRequest(
+            targetPercent: targetPercent,
+            floorPercent: floorPercent,
+            belowFloorConsent: belowFloorConsent
+        )
         return await sendAck(request, kind: XPCEnvelope.kindForceDischarge) { proxy, envelope, reply in
             proxy.startForceDischarge(envelope, withReply: reply)
         }

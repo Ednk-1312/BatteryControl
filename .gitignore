@@ -16,3 +16,4 @@ default.profraw
 
 # Freebuff
 .freebuff/
+BatteryControl-*.pkg

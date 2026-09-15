@@ -123,7 +123,7 @@ struct DashboardView: View {
     @ViewBuilder
     private var banners: some View {
         if let snapshot = appState.snapshot {
-            if snapshot.isForceDischarging, case .forceDischarge(let target, _) = snapshot.activeOverride {
+            if snapshot.isForceDischarging, case .forceDischarge(let target, _, _) = snapshot.activeOverride {
                 HStack(spacing: 10) {
                     Image(systemName: "bolt.slash.fill")
                         .foregroundStyle(.red)

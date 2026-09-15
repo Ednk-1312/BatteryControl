@@ -176,11 +176,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    func startForceDischarge(target: Int) {
+    func startForceDischarge(target: Int, floor: Int? = nil, belowFloorConsent: Bool = false) {
         Task {
             let ack = await DaemonClient.shared.startForceDischarge(
                 targetPercent: target,
-                floorPercent: ChargingPolicyEngine.minimumDischargeFloor
+                floorPercent: floor ?? ChargingPolicyEngine.minimumDischargeFloor,
+                belowFloorConsent: belowFloorConsent
             )
             await present(ack: ack)
         }

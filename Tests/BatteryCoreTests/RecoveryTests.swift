@@ -25,7 +25,7 @@ final class RecoveryTests: XCTestCase {
         XCTAssertTrue(RecoveryDecisions.shouldReapplyAfterWake(
             readings: BatteryReadings.placeholder,
             policy: .passthrough(),
-            override: .forceDischarge(targetPercent: 60, floorPercent: 20)
+            override: .forceDischarge(targetPercent: 60, floorPercent: 20, belowFloorConsent: false)
         ))
     }
 
@@ -47,7 +47,7 @@ final class PolicyCodableTests: XCTestCase {
     }
 
     func testOverrideRoundTrip() throws {
-        let override = PolicyOverride.forceDischarge(targetPercent: 60, floorPercent: 20)
+        let override = PolicyOverride.forceDischarge(targetPercent: 60, floorPercent: 20, belowFloorConsent: false)
         let data = try JSONEncoder().encode(override)
         let decoded = try JSONDecoder().decode(PolicyOverride.self, from: data)
         XCTAssertEqual(decoded, override)

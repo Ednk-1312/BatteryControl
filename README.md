@@ -49,6 +49,7 @@ one-line platform-gate change plus tests.)
 | Lower limit | Charging resumes only after the battery falls to the lower limit (hysteresis; by default 2 points below the limit) | — |
 | Fixed target | Maintains "about 80%" using a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
 | Force discharge | Cuts adapter input so the Mac runs on battery down to a target on AC | Stops automatically at the target, at the 20% safety floor, on unplug, and before sleep; slow (~1%/5–10 min idle) |
+| Below-floor discharge (opt-in) | A red "Remove safety floor" switch allows deliberately draining to 1% for calibration or storage experiments | **Accelerates battery degradation** — the UI requires an explicit confirmation and says so; the daemon independently validates the consent flag |
 | Charge to 100% | One-time override that bypasses the limit, then restores it | Also ends on unplug |
 | Calibration | Guided full-cycle gauge refresh: discharge to 20% → charge to 100% → hold 3 hours → drop to your limit, with safety aborts | Re-trains the gauge's capacity estimate; it does **not** repair physical battery health |
 | Diagnostics | Full system/control report, backend capabilities, readable log | — |
@@ -97,6 +98,16 @@ BatteryControl is built as a general-purpose Apple Silicon battery-control utili
 by a growing library of verified firmware profiles. Capability is always decided at
 runtime by probing the SMC keys actually present — never by macOS version or Mac model —
 and every profile records the hardware evidence behind it.
+
+**Portability:** nothing in the control path is machine-specific. No model identifier,
+firmware build, or test value (80/70 or otherwise) appears in the backend, engine, or XPC
+code — those live only in the evidence database. A fresh install on another M1–M4 Mac
+probes the SMC at runtime and either (a) matches a known key signature and gets full
+control with per-action verification, or (b) finds unknown keys and gets read-only
+diagnostics. The two known profiles (20xxx firmware-limit, legacy SMC inhibit) are built
+into the binary; a community database at `/Library/Application Support/BatteryControl/
+compatibility.json` (schema: `Support/CompatibilityDatabase.json`) can add profiles or
+refresh evidence without an app update, and grows as users submit reports.
 
 ### Confidence tiers
 
@@ -173,12 +184,36 @@ Or open `BatteryControl.xcodeproj` in Xcode and press Cmd+R. The build produces
 `BatteryControl.app` with the privileged daemon and its LaunchDaemon plist embedded at
 `Contents/Library/LaunchDaemons/`.
 
+### Distributable .pkg
+
+Build a one-double-click installer containing the app (helper embedded):
+
+```sh
+xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl -configuration Release \
+  -destination 'platform=macOS' build
+APP=$(ls -dt ~/Library/Developer/Xcode/DerivedData/BatteryControl-*/Build/Products/Release/BatteryControl.app | head -1)
+ROOT=$(mktemp -d) && mkdir -p "$ROOT/Applications" && cp -R "$APP" "$ROOT/Applications/"
+pkgbuild --root "$ROOT" --identifier com.batterycontrol.app --version 1.0.0 BatteryControl.pkg
+```
+
+The installer needs no custom scripts: on first launch the app runs its own setup flow
+(`SMAppService` registration → one administrator authorization → daemon running).
+
+**For other Macs (Gatekeeper):** the app is signed with an Apple Development identity, so
+it runs out of the box only on machines registered to the same team. For a public release,
+distribute with **notarization** (`notarytool`/`stapler` under your Apple Developer
+identity) so Gatekeeper approves it on any Mac. Until then, an unsigned/Development-signed
+copy on a different Mac requires a one-time right-click → Open (or
+System Settings → Privacy & Security → Open Anyway). The daemon's XPC listener accepts
+clients signed by the same team or living inside the same app bundle, so ad-hoc
+developer builds work without changes.
+
 ### First launch
 
 1. The app opens in **setup mode** (menu-bar-only, no Dock icon) and shows the setup banner.
 2. Click **Install Helper** and authorize with an administrator password. The app registers
    the daemon via `SMAppService`, verifies it is running, and establishes XPC.
-3. Pick an upper limit and lower threshold. Done — you can close the window.
+3. Pick an upper limit and lower limit. Done — you can close the window.
 
 If installation fails or the daemon is missing/outdated/not running, the setup banner offers
 **Repair Helper**, which re-runs the install flow (including an explicit

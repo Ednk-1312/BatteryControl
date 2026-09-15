@@ -72,8 +72,10 @@ public struct ChargingPolicy: Codable, Equatable, Sendable {
 public enum PolicyOverride: Codable, Equatable, Sendable {
     case none
     /// Force-discharge toward `targetPercent` while on AC; never below
-    /// `floorPercent`.
-    case forceDischarge(targetPercent: Int, floorPercent: Int)
+    /// `floorPercent`. A floor below `ChargingPolicyEngine.minimumDischargeFloor`
+    /// is only honored when `belowFloorConsent` is true (explicit user
+    /// acknowledgement of accelerated battery degradation).
+    case forceDischarge(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool)
     /// Temporarily charge to `targetPercent`, then restore the normal policy.
     case forceCharge(targetPercent: Int)
 

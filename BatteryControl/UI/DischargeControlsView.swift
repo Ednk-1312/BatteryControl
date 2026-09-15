@@ -3,63 +3,36 @@ import SwiftUI
 
 /// Force-discharge panel. The safety floor is enforced in three places:
 /// here (UI), at the XPC boundary, and in the daemon before any hardware
-/// write — the UI cannot send a value the daemon would refuse.
+/// write — the UI cannot send a value the daemon would refuse. Discharging
+/// below the floor additionally requires the explicit red "Remove safety
+/// floor" consent switch plus a confirmation dialog.
 struct DischargeControlsView: View {
 
     @EnvironmentObject private var appState: AppState
 
     @State private var targetPercent = 60.0
     @State private var floorPercent = 20.0
+    @State private var belowFloorEnabled = false
+    @State private var showConsentDialog = false
 
     private let supportedFloors: [Double] = [20, 25, 30, 40, 50]
+
+    /// Slider range for the discharge target: extends to 1% only after the
+    /// user explicitly removes the safety floor.
+    private var targetRange: ClosedRange<Double> {
+        belowFloorEnabled
+            ? Double(ChargingPolicyEngine.absoluteDischargeFloor)...100
+            : Double(ChargingPolicyEngine.minimumDischargeFloor)...100
+    }
 
     var body: some View {
         Form {
             Section("Force discharge") {
                 if let snapshot = appState.snapshot, snapshot.isForceDischarging,
-                   case .forceDischarge(let target, _) = snapshot.activeOverride {
-                    HStack(spacing: 10) {
-                        Image(systemName: "bolt.slash.fill")
-                            .foregroundStyle(.red)
-                        Text("FORCE DISCHARGE ACTIVE")
-                            .font(.headline)
-                        Spacer()
-                        Text("Current \(snapshot.readings.percentage)% → Target \(target)%")
-                            .font(.callout.monospacedDigit())
-                    }
-                    Button("Stop Force Discharge") {
-                        appState.cancelOverrides()
-                    }
-                    .buttonStyle(.borderedProminent)
+                   case .forceDischarge(let target, let floor, _) = snapshot.activeOverride {
+                    activeSessionSection(target: target, floor: floor, currentPercent: snapshot.readings.percentage)
                 } else {
-                    HStack {
-                        Slider(value: $targetPercent, in: 20...100, step: 1) {
-                            Text("Discharge target")
-                        }
-                        Text("\(Int(targetPercent))%")
-                            .monospacedDigit()
-                            .frame(width: 52, alignment: .trailing)
-                    }
-                    .disabled(!appState.capabilities.supportsForceDischarge)
-
-                    Picker("Safety floor", selection: $floorPercent) {
-                        ForEach(supportedFloors, id: \.self) { floor in
-                            Text("\(Int(floor))%").tag(floor)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(!appState.capabilities.supportsForceDischarge)
-
-                    Text("The Mac stops drawing adapter power and runs on the battery until it reaches \(Int(targetPercent))%. Discharge stops automatically at the target, at the safety floor, when the charger is physically unplugged, or before sleep. It cannot be run below \(ChargingPolicyEngine.minimumDischargeFloor)%.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Button("Start Force Discharge") {
-                        appState.startForceDischarge(target: Int(targetPercent))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!appState.capabilities.supportsForceDischarge
-                              || !appState.effectiveReadings.isExternalConnected)
+                    idleControls
                 }
 
                 if !appState.effectiveReadings.isExternalConnected,
@@ -79,5 +52,142 @@ struct DischargeControlsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Discharge")
+        .confirmationDialog(
+            "Remove the safety floor?",
+            isPresented: $showConsentDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Remove safety floor and allow discharge to \(Int(targetPercent))%", role: .destructive) {
+                // Consent confirmed; keep the switch on.
+                belowFloorEnabled = true
+                clampTargetToRange()
+            }
+            Button("Cancel", role: .cancel) {
+                belowFloorEnabled = false
+            }
+        } message: {
+            Text(disclaimerText)
+        }
+        .onChange(of: belowFloorEnabled) { _, enabled in
+            guard enabled else {
+                clampTargetToRange()
+                return
+            }
+            showConsentDialog = true
+        }
+    }
+
+    // MARK: Idle controls
+
+    private var idleControls: some View {
+        Group {
+            HStack {
+                Slider(value: $targetPercent, in: targetRange, step: 1) {
+                    Text("Discharge target")
+                }
+                Text("\(Int(targetPercent))%")
+                    .monospacedDigit()
+                    .frame(width: 52, alignment: .trailing)
+            }
+            .disabled(!appState.capabilities.supportsForceDischarge)
+
+            Picker("Safety floor", selection: $floorPercent) {
+                ForEach(supportedFloors, id: \.self) { floor in
+                    Text("\(Int(floor))%").tag(floor)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!appState.capabilities.supportsForceDischarge || belowFloorEnabled)
+
+            belowFloorSwitch
+
+            explanationText
+            startButton
+        }
+    }
+
+    private var belowFloorSwitch: some View {
+        Toggle(isOn: $belowFloorEnabled) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                Text("Remove safety floor")
+                    .foregroundStyle(.red)
+                    .fontWeight(.semibold)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(.red)
+        .disabled(!appState.capabilities.supportsForceDischarge)
+    }
+
+    private var explanationText: some View {
+        let floorLine = belowFloorEnabled
+            ? "The safety floor is REMOVED: discharge may continue to \(Int(targetPercent))% and stop only there."
+            : "Discharge stops automatically at the target, at the \(Int(floorPercent))% safety floor, when the charger is physically unplugged, or before sleep."
+        return Text(floorLine)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private var startButton: some View {
+        Button(belowFloorEnabled ? "Start Force Discharge (floor removed)" : "Start Force Discharge") {
+            appState.startForceDischarge(
+                target: Int(targetPercent),
+                floor: belowFloorEnabled
+                    ? ChargingPolicyEngine.absoluteDischargeFloor
+                    : Int(floorPercent),
+                belowFloorConsent: belowFloorEnabled
+            )
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(belowFloorEnabled ? .red : .accentColor)
+        .disabled(!appState.capabilities.supportsForceDischarge
+                  || !appState.effectiveReadings.isExternalConnected)
+    }
+
+    // MARK: Active session
+
+    private func activeSessionSection(target: Int, floor: Int, currentPercent: Int) -> some View {
+        Group {
+            HStack(spacing: 10) {
+                Image(systemName: "bolt.slash.fill")
+                    .foregroundStyle(.red)
+                Text("FORCE DISCHARGE ACTIVE")
+                    .font(.headline)
+                Spacer()
+                Text("Current \(currentPercent)% → Target \(target)%")
+                    .font(.callout.monospacedDigit())
+            }
+            if floor < ChargingPolicyEngine.minimumDischargeFloor {
+                Label("Safety floor removed — discharging below \(ChargingPolicyEngine.minimumDischargeFloor)%. This accelerates battery degradation.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+            Button("Stop Force Discharge") {
+                appState.cancelOverrides()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    // MARK: Helpers
+
+    private var disclaimerText: String {
+        """
+        Discharging below \(ChargingPolicyEngine.minimumDischargeFloor)% bypasses BatteryControl's \
+        safety floor and deliberately deep-discharges the battery. This WILL accelerate battery \
+        degradation and shorten its usable life, and carries a small risk of an unexpected \
+        shutdown near empty. Unsaved work may be lost.
+
+        You can stop the discharge at any time by turning this off or pressing Stop.
+        """
+    }
+
+    private func clampTargetToRange() {
+        if targetPercent < targetRange.lowerBound {
+            targetPercent = targetRange.lowerBound
+        }
     }
 }

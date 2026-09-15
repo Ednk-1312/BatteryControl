@@ -5,18 +5,35 @@ import Foundation
 public enum ChargingPolicyEngine {
 
     /// Minimum safe discharge floor unless hardware explicitly supports a
-    /// safer mechanism. Forced discharge never goes below this.
+    /// safer mechanism. Forced discharge never goes below this WITHOUT the
+    /// user's explicit below-floor consent.
     public static let minimumDischargeFloor = 20
 
+    /// Absolute floor for a consented below-floor discharge. The Mac's own
+    /// hardware shutdown occurs before a displayed 0%, so 1% is the lowest
+    /// meaningful stop point BatteryControl will program.
+    public static let absoluteDischargeFloor = 1
+
     /// Clamp a user-requested discharge target/floor into the safe range.
+    /// Values below `minimumDischargeFloor` are preserved here (clamped to
+    /// `absoluteDischargeFloor`); whether such a floor is *allowed* is a
+    /// consent decision enforced at the request boundary (UI + XPC handler),
+    /// not silently re-clamped here.
     public static func sanitizedDischargeFloor(_ requested: Int) -> Int {
-        max(min(max(requested, 5), 100), minimumDischargeFloor)
+        min(max(requested, absoluteDischargeFloor), 100)
     }
 
-    /// Resolve the effective floor for a force-discharge session: never below
-    /// the safety floor.
+    /// Resolve the effective floor for a force-discharge session: at or above
+    /// the safety floor unless an explicit below-floor consent produced a
+    /// lower (already-validated) value.
     public static func effectiveDischargeFloor(requested: Int) -> Int {
-        max(minimumDischargeFloor, sanitizedDischargeFloor(requested))
+        max(absoluteDischargeFloor, sanitizedDischargeFloor(requested))
+    }
+
+    /// Whether a resolved floor represents a below-safety-floor session that
+    /// may only exist with the user's explicit degradation consent.
+    public static func requiresBelowFloorConsent(floor: Int) -> Bool {
+        floor < minimumDischargeFloor
     }
 
     /// Clamp any user-entered percentage into 1...100.
@@ -31,10 +48,15 @@ public enum ChargingPolicyEngine {
     /// 2. Force-discharge session (stop at target/floor, abort on safety).
     /// 3. Force-charge override (charge regardless of the upper limit).
     /// 4. Base policy (hysteresis / fixed target / passthrough).
+    ///
+    /// A force-discharge floor below the safety floor is only honored when
+    /// `belowFloorConsent` is true — the daemon re-checks this every tick so
+    /// a hand-edited policy file cannot bypass the consent requirement.
     public static func decide(
         readings: BatteryReadings,
         policy: ChargingPolicy,
-        override: PolicyOverride
+        override: PolicyOverride,
+        belowFloorConsent: Bool = false
     ) -> ChargingAction {
         // Hard safety: if anything is nonsense, fail toward the least
         // destructive action (normal charging) rather than draining or
@@ -44,21 +66,25 @@ public enum ChargingPolicyEngine {
         }
 
         switch override {
-        case .forceDischarge(let target, let requestedFloor):
+        case .forceDischarge(let target, let requestedFloor, _):
             let floor = effectiveDischargeFloor(requested: requestedFloor)
+            // A below-safety-floor floor without recorded consent is an
+            // integrity failure: clamp the session back to the safety floor
+            // rather than aborting it entirely (which would silently cancel
+            // a legitimate session across a restart).
+            if requiresBelowFloorConsent(floor: floor), !belowFloorConsent {
+                return continueOrStop(
+                    readings: readings,
+                    target: max(target, minimumDischargeFloor)
+                )
+            }
             // Discharge stops at the user's target — unless that target itself
             // sits below the safety floor, in which case the floor wins.
             let stopPoint = max(target, floor)
             // Safety conditions that must stop forced discharge immediately:
             // reached the stop point, or the user pulled the plug (on battery
             // power there is nothing to discharge against).
-            if readings.percentage <= stopPoint {
-                return .normal
-            }
-            if !readings.isExternalConnected {
-                return .normal
-            }
-            return .forceDischarge
+            return continueOrStop(readings: readings, target: stopPoint)
 
         case .forceCharge(let target):
             if readings.percentage >= target {
@@ -95,6 +121,18 @@ public enum ChargingPolicyEngine {
                 return .hold
             }
         }
+    }
+
+    /// Force-discharge termination conditions shared by the consented and
+    /// consent-clamped paths.
+    private static func continueOrStop(readings: BatteryReadings, target: Int) -> ChargingAction {
+        if readings.percentage <= target {
+            return .normal
+        }
+        if !readings.isExternalConnected {
+            return .normal
+        }
+        return .forceDischarge
     }
 
     /// Decide the action while a calibration session is active. Calibration
