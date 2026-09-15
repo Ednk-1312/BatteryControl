@@ -97,6 +97,9 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
     public var activeBackendID: String
     public var capabilities: BatteryCapabilities
     public var helperStatus: HelperStatus
+    /// Confidence tier from the firmware compatibility library, when the
+    /// daemon classified the machine (nil on older daemons).
+    public var firmwareProfileTier: FirmwareProfileTier?
     public var timestamp: Date
 
     public init(
@@ -108,6 +111,7 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
         activeBackendID: String,
         capabilities: BatteryCapabilities,
         helperStatus: HelperStatus,
+        firmwareProfileTier: FirmwareProfileTier? = nil,
         timestamp: Date = Date()
     ) {
         self.readings = readings
@@ -118,6 +122,7 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
         self.activeBackendID = activeBackendID
         self.capabilities = capabilities
         self.helperStatus = helperStatus
+        self.firmwareProfileTier = firmwareProfileTier
         self.timestamp = timestamp
     }
 

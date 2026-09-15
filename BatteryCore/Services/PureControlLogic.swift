@@ -19,7 +19,7 @@ public struct BackendID: Equatable, Hashable, Sendable {
     public var displayName: String {
         switch rawValue {
         case BackendID.pmAssertion.rawValue: return "Power assertions (ChargeInhibit / DisableInflow)"
-        case BackendID.firmwareLimit.rawValue: return "Firmware-managed charge limit (bfF0/bfD0/bfE0)"
+        case BackendID.firmwareLimit.rawValue: return "Firmware-managed charge limit"
         case BackendID.smcInhibit.rawValue: return "SMC (charge inhibit)"
         case BackendID.smcCHWA.rawValue: return "SMC (CHWA limit)"
         case BackendID.bclmLegacy.rawValue: return "BCLM (legacy)"

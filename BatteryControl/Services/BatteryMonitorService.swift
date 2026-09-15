@@ -172,7 +172,7 @@ final class AppState: ObservableObject {
     func apply(policy: ChargingPolicy) {
         Task {
             let ack = await DaemonClient.shared.applyPolicy(policy)
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 
@@ -183,35 +183,35 @@ final class AppState: ObservableObject {
                 floorPercent: floor ?? ChargingPolicyEngine.minimumDischargeFloor,
                 belowFloorConsent: belowFloorConsent
             )
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 
     func startForceCharge(target: Int) {
         Task {
             let ack = await DaemonClient.shared.startForceCharge(targetPercent: target)
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 
     func cancelOverrides() {
         Task {
             let ack = await DaemonClient.shared.cancelOverrides()
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 
     func beginCalibration() {
         Task {
             let ack = await DaemonClient.shared.beginCalibration()
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 
     func cancelCalibration() {
         Task {
             let ack = await DaemonClient.shared.cancelCalibration()
-            await present(ack: ack)
+            present(ack: ack)
         }
     }
 

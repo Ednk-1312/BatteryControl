@@ -2,6 +2,21 @@
 
 Reliable battery charge management for **Apple Silicon Macs (M1–M4) running macOS 15 Sequoia**.
 
+## Choose your edition
+
+| | **BatteryControl** (GUI + CLI) | **BatteryControl CLI** |
+|---|---|---|
+| Best for | Most users | Automation, scripting, SSH/headless Macs |
+| Native app + menu bar | ✓ | — |
+| `batterycontrol` command | ✓ | ✓ |
+| Privileged daemon | ✓ (installed by the app's setup flow) | uses the daemon if present, read-only status otherwise |
+| Package | `BatteryControl-<version>.pkg` | `BatteryControlCLI-<version>.pkg` |
+
+Both editions are the same product: one shared core, **one privileged daemon**, two entry
+points. The GUI and the CLI are interchangeable clients — the daemon owns every hardware
+operation, validates every request independently, and never reports a limit as active
+without readback verification.
+
 BatteryControl's primary mode is the **Fixed Charge Limit** — "set my Mac to 80%" — with
 one-tap presets (60/70/80/90/100% plus custom) and a configurable lower limit for
 hysteresis. Under the hood it also offers a fixed charge target, force discharge with a hard
@@ -9,8 +24,30 @@ safety floor, a one-time "charge to 100%" override, and a guided gauge calibrati
 enforced by a small privileged daemon that keeps working when the app is closed, the
 menu-bar icon is hidden, or the Mac has just woken up.
 
-The project is optimized for a small number of controls that **actually work and verify
-themselves** on macOS 15, rather than many features that only look like they work.
+## Command line
+
+```bash
+batterycontrol status                     # battery, power, limit, verification state
+batterycontrol limit set 80               # Fixed Charge Limit at 80% (default hysteresis)
+batterycontrol limit set 80 --resume 70   # custom lower limit
+batterycontrol limit off                  # hand charging back to macOS
+batterycontrol discharge start 60         # run on battery down to 60% while on AC
+batterycontrol discharge stop
+discharge status
+diagnostics
+batterycontrol compatibility              # which control mechanisms this Mac supports
+batterycontrol version
+```
+
+The CLI is a *client*: it cannot write SMC keys directly and cannot bypass any safety rule.
+Everything goes `CLI → daemon → validated action → SMC → readback → result`. Discharging
+below the 20% safety floor requires an explicit `--allow-below-floor` flag (it accelerates
+battery degradation — the output says so), consent applies to that discharge session only,
+and the daemon independently enforces the requirement even if a client tries to omit it.
+
+Exit codes are script-friendly: `0` success, `2` invalid arguments, `3` daemon unavailable,
+`4` unsupported hardware, `6` safety rejection, `7` hardware write failure, `8` verification
+failure, `9` communication failure.
 
 ## How it works on your Mac
 
@@ -184,29 +221,37 @@ Or open `BatteryControl.xcodeproj` in Xcode and press Cmd+R. The build produces
 `BatteryControl.app` with the privileged daemon and its LaunchDaemon plist embedded at
 `Contents/Library/LaunchDaemons/`.
 
-### Distributable .pkg
+### Distributable packages
 
-Build a one-double-click installer containing the app (helper embedded):
+One script builds everything, signs what it can, and verifies the package contents:
 
 ```sh
-xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl -configuration Release \
-  -destination 'platform=macOS' build
-APP=$(ls -dt ~/Library/Developer/Xcode/DerivedData/BatteryControl-*/Build/Products/Release/BatteryControl.app | head -1)
-ROOT=$(mktemp -d) && mkdir -p "$ROOT/Applications" && cp -R "$APP" "$ROOT/Applications/"
-pkgbuild --root "$ROOT" --identifier com.batterycontrol.app --version 1.0.0 BatteryControl.pkg
+scripts/build-release.sh 1.0.1
 ```
 
-The installer needs no custom scripts: on first launch the app runs its own setup flow
-(`SMAppService` registration → one administrator authorization → daemon running).
+Artifacts in `dist/`:
 
-**For other Macs (Gatekeeper):** the app is signed with an Apple Development identity, so
-it runs out of the box only on machines registered to the same team. For a public release,
-distribute with **notarization** (`notarytool`/`stapler` under your Apple Developer
-identity) so Gatekeeper approves it on any Mac. Until then, an unsigned/Development-signed
-copy on a different Mac requires a one-time right-click → Open (or
-System Settings → Privacy & Security → Open Anyway). The daemon's XPC listener accepts
-clients signed by the same team or living inside the same app bundle, so ad-hoc
-developer builds work without changes.
+| File | Contents |
+|---|---|
+| `BatteryControl-<v>.pkg` | GUI app + CLI + embedded daemon (installs to `/Applications` and `/usr/local/bin/batterycontrol`) |
+| `BatteryControlCLI-<v>.pkg` | CLI only (`/usr/local/bin/batterycontrol`), **no daemon** — it uses the daemon installed by the GUI edition and reports honestly when none is present |
+| `BatteryControl-<v>.zip` | Developer-friendly archive of the app + CLI |
+| `SHA256SUMS` | SHA-256 hashes of all artifacts |
+
+The CLI-only package never installs privileged components; the one privileged daemon comes
+only from the GUI edition's setup flow (`SMAppService`, one administrator authorization).
+No sudoers entries, no stored passwords, no permanent root shells.
+
+#### Signing
+
+The binaries (app, daemon, CLI) are signed with an **Apple Development** certificate when one
+is available in the keychain; the CLI falls back to ad-hoc signing otherwise. The `.pkg`
+installers themselves are currently **unsigned**: signing them requires a *Developer ID
+Installer* certificate and notarization requires a *Developer ID Application* certificate
+plus a paid Apple Developer account and network access at release time. Neither is faked.
+Until a signed/notarized release is produced, users installing the `.pkg` will need to
+approve it in System Settings → Privacy & Security on first install (standard Gatekeeper
+flow for unsigned packages). `SHA256SUMS` provides integrity verification in the meantime.
 
 ### First launch
 

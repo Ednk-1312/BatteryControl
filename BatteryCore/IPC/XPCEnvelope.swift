@@ -6,7 +6,7 @@ import Foundation
 /// requirements of NSXPCConnection. The `kind` discriminator makes decoding
 /// strict: the daemon rejects messages whose kind does not match the type
 /// expected at the decode site.
-public final class XPCEnvelope: NSObject, NSSecureCoding {
+public final class XPCEnvelope: NSObject, NSSecureCoding, @unchecked Sendable {
 
     public static let supportsSecureCoding = true
 

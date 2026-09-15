@@ -675,8 +675,9 @@ if let flag = arguments.first {
     case "--program-firmware-limit":
         DaemonLog.bootstrap()
         // Load the distributable compatibility database before any write
-        // decision (missing file = built-in profiles only).
-        try? FirmwareProfileLibrary.loadDatabase(atPath: BatteryXPC.compatibilityDatabasePath)
+        // decision (missing file = built-in profiles only; a parse failure is
+        // acceptable here — the engine falls back to built-in profiles).
+        _ = try? FirmwareProfileLibrary.loadDatabase(atPath: BatteryXPC.compatibilityDatabasePath)
         exit(runProgramFirmwareLimit(Array(arguments.dropFirst())))
     case "--disable-firmware-limit":
         DaemonLog.bootstrap()

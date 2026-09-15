@@ -535,7 +535,8 @@ final class ControlEngine {
             controlIsVerified: controlIsVerified,
             activeBackendID: activeBackend.id.rawValue,
             capabilities: capabilities,
-            helperStatus: helperStatus
+            helperStatus: helperStatus,
+            firmwareProfileTier: firmwareProfileTier,
         )
     }
 
