@@ -30,8 +30,13 @@ final class ControlEngine {
     private(set) var firmwareProfileTier: FirmwareProfileTier = .untested
     private(set) var firmwareProfileSummary: String = ""
 
-    /// Bookkeeping for bounded retries.
+    // Bookkeeping for bounded retries.
     private var attemptNumber = 0
+    /// The last discharge session seen by the tick loop; a falling edge
+    /// (active → ended) releases any manual adapter cut we still hold so
+    /// the charger re-engages immediately instead of waiting for the next
+    /// `.normal` decision.
+    private var dischargeWasActive = false
     private var lastReassert = Date()
     private var startInstant = Date()
 
@@ -275,6 +280,22 @@ final class ControlEngine {
             return ChargingPolicyEngine.decideForCalibration(readings: readings, session: session)
         }
 
+        // Falling edge of a force-discharge session: release any manual
+        // adapter cut we still hold. Above the limit the firmware limit will
+        // re-cut on its own if it should; releasing here only removes OUR
+        // latch so the charger re-attaches without waiting a tick.
+        if dischargeWasActive {
+            if case .forceDischarge = override {
+            } else {
+                SMCChargeControl.releaseAllAdaptersIfNeeded()
+                DaemonLog.info("Force discharge ended; released any latched adapter cut.", operation: "forceDischarge")
+            }
+        }
+        dischargeWasActive = false
+        if case .forceDischarge = override {
+            dischargeWasActive = true
+        }
+
         // Force-discharge session bookkeeping.
         if case .forceDischarge(let target, let floor, _) = override {
             let stopPoint = max(target, ChargingPolicyEngine.effectiveDischargeFloor(requested: floor))
@@ -287,12 +308,13 @@ final class ControlEngine {
                 controlIsVerified = false
                 return .normal
             }
-            if !readings.isExternalConnected {
-                DaemonLog.info("Adapter physically disconnected; force discharge ended.", operation: "forceDischarge")
-                override = .none
-                controlIsVerified = false
-                return .normal
-            }
+            // NOTE: there is deliberately NO unplug abort here. While our
+            // adapter cut is latched, macOS reports ExternalConnected = No
+            // and drops the adapter object entirely (USB-C PD de-negotiation)
+            // — telemetry cannot distinguish our own cut from a physical
+            // unplug. A latched cut with no adapter present is simply a
+            // no-op; the session still ends at the target/floor, when the
+            // user stops it, or before sleep.
         }
 
         // Force-charge session bookkeeping.

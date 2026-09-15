@@ -7,6 +7,14 @@ public struct BatteryReadings: Codable, Equatable, Sendable {
     public var percentage: Int
     public var isCharging: Bool
     public var isExternalConnected: Bool
+    /// Whether the AC adapter is PHYSICALLY attached (AdapterDetails present
+    /// in the AppleSmartBattery registry), regardless of whether input is
+    /// currently allowed to flow. During a forced discharge the adapter
+    /// input is cut, so `isExternalConnected` reads false while the charger
+    /// remains plugged in — abort logic must use this flag to tell "user
+    /// pulled the plug" apart from "we cut the input ourselves".
+    /// Defaults to `isExternalConnected` for callers that don't supply it.
+    public var isAdapterAttached: Bool
     /// macOS' own battery-health verdict, when available.
     public var condition: BatteryCondition
     public var cycleCount: Int
@@ -27,6 +35,7 @@ public struct BatteryReadings: Codable, Equatable, Sendable {
         percentage: Int,
         isCharging: Bool,
         isExternalConnected: Bool,
+        isAdapterAttached: Bool? = nil,
         condition: BatteryCondition,
         cycleCount: Int,
         currentCapacitymAh: Int,
@@ -40,6 +49,7 @@ public struct BatteryReadings: Codable, Equatable, Sendable {
         self.percentage = percentage
         self.isCharging = isCharging
         self.isExternalConnected = isExternalConnected
+        self.isAdapterAttached = isAdapterAttached ?? isExternalConnected
         self.condition = condition
         self.cycleCount = cycleCount
         self.currentCapacitymAh = currentCapacitymAh

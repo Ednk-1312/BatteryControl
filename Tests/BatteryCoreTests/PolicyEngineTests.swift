@@ -139,13 +139,31 @@ final class PolicyEngineTests: XCTestCase {
         XCTAssertEqual(ChargingPolicyEngine.effectiveDischargeFloor(requested: -5), 1)
     }
 
-    func testForceDischargeStopsWhenUnplugged() {
+    func testForceDischargeContinuesWhileCutIsLatched() {
+        // Regression: during an active cut macOS reports ExternalConnected
+        // = No and may drop the adapter object entirely (PD de-negotiation)
+        // even though the charger is physically attached. Adapter state is
+        // the effect of our own action, so the session must continue.
+        var cut = readings(percent: 78, charging: false)
+        cut.isExternalConnected = false
+        cut.isAdapterAttached = false
+        let action = ChargingPolicyEngine.decide(
+            readings: cut,
+            policy: hysteresisPolicy,
+            override: .forceDischarge(targetPercent: 60, floorPercent: 20, belowFloorConsent: false)
+        )
+        XCTAssertEqual(action, .forceDischarge, "Latched cut must not abort the session")
+    }
+
+    func testForceDischargeContinuesOnBatteryPower() {
+        // A latched cut with no adapter present is a no-op, not an abort:
+        // the pack drains toward the target either way.
         let action = ChargingPolicyEngine.decide(
             readings: readings(percent: 90, external: false),
             policy: hysteresisPolicy,
             override: .forceDischarge(targetPercent: 60, floorPercent: 20, belowFloorConsent: false)
         )
-        XCTAssertEqual(action, .normal, "No adapter to cut when on battery power")
+        XCTAssertEqual(action, .forceDischarge)
     }
 
     func testEffectiveFloorPreservesBelowFloorRequestForConsentCheck() {

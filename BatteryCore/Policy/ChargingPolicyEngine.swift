@@ -124,12 +124,14 @@ public enum ChargingPolicyEngine {
     }
 
     /// Force-discharge termination conditions shared by the consented and
-    /// consent-clamped paths.
+    /// consent-clamped paths. There is deliberately NO adapter-state abort:
+    /// while the cut is latched macOS reports the adapter as gone even when
+    /// it is physically attached (PD de-negotiation), so adapter state is
+    /// the effect of our own action. A latched cut with no adapter present
+    /// is a no-op; the session ends at the target/floor, when the user
+    /// stops it, or before sleep.
     private static func continueOrStop(readings: BatteryReadings, target: Int) -> ChargingAction {
         if readings.percentage <= target {
-            return .normal
-        }
-        if !readings.isExternalConnected {
             return .normal
         }
         return .forceDischarge

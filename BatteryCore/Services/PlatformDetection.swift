@@ -158,10 +158,17 @@ public enum PlatformDetector {
 
             // Detailed values come from the AppleSmartBattery registry.
             let smart = readAppleSmartBattery()
+            // Physical adapter attachment: AdapterDetails is present iff a
+            // charger is plugged in, INDEPENDENT of whether input currently
+            // flows. During a forced discharge the input is cut and macOS
+            // reports ExternalConnected = No even though the charger is
+            // physically attached — this flag tells the two apart.
+            let adapterAttached = !(smart["AdapterDetails"] as? [[String: Any]] ?? []).isEmpty
             return BatteryReadings(
                 percentage: percentage,
                 isCharging: charging,
                 isExternalConnected: onAC || (smart["ExternalConnected"] as? Bool ?? false),
+                isAdapterAttached: adapterAttached,
                 condition: condition(fromDescription: desc),
                 cycleCount: smart["CycleCount"] as? Int ?? 0,
             // Real capacity values (mAh). On Apple Silicon the top-level
