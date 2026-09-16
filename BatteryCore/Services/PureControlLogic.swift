@@ -182,4 +182,26 @@ public enum RecoveryDecisions {
     public static let tickIntervalSeconds: TimeInterval = 20
     /// How often the daemon re-asserts the policy even if nothing changed.
     public static let reassertIntervalSeconds: TimeInterval = 300
+
+    /// Resolve the action to write after the engine resolved an override
+    /// away at the boundary of a tick. A `.hold` decision must never be
+    /// resolved as a previous override action: `.hold` means "keep whatever
+    /// is applied", and applying a just-cancelled discharge would re-latch
+    /// the adapter cut the engine had just released. Falling back to the
+    /// policy's natural action is always safe.
+    public static func resolvedHoldAction(
+        lastHeld: ChargingAction?,
+        policy: ChargingPolicy,
+        connected: Bool
+    ) -> ChargingAction {
+        guard lastHeld == nil || lastHeld == .forceDischarge else { return .hold }
+        switch policy.mode {
+        case .passthrough:
+            return .normal
+        case .hysteresis:
+            return .normal
+        case .fixedTarget:
+            return connected ? .normal : .hold
+        }
+    }
 }

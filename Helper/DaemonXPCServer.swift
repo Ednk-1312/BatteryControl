@@ -134,10 +134,14 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
     // MARK: Status
 
     func getStatus(withReply reply: @escaping (XPCEnvelope?) -> Void) {
+        // One locked read: the handler runs on a connection queue, not the
+        // engine queue, so snapshot + attempt + error must be captured
+        // atomically with respect to the engine.
+        let payload = engine.statusPayload(helperStatus: .running)
         let response = XPCStatusResponse(
-            snapshot: engine.snapshot(helperStatus: .running),
-            lastAttempt: engine.lastAttempt,
-            lastError: engine.lastError,
+            snapshot: payload.snapshot,
+            lastAttempt: payload.lastAttempt,
+            lastError: payload.lastError,
             daemonVersion: engine.daemonVersion
         )
         reply(XPCEnvelope.encode(response, kind: XPCEnvelope.kindStatus))

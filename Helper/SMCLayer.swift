@@ -97,10 +97,29 @@ private struct SMCParamStruct {
 /// Talks to the AppleSMC IOKit user client. The connection is long-lived;
 /// a stale handle is recovered by reopening on the next call.
 enum SMC {
+    /// Serializes ALL user-client access. The connection handle is a single
+    /// shared resource used from the engine queue, XPC handler threads, and
+    /// probe paths; concurrent IOConnectCallStructMethod calls on one handle
+    /// — or a close() racing a call — can crash the process mid-write.
+    /// Every public operation holds the lock for its full duration; internal
+    /// `...Locked` helpers assume it is already held.
+    private static let lock = NSLock()
     private static var connection: io_connect_t = 0
     private static var opened = false
 
     static func open() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        try openLocked()
+    }
+
+    static func close() {
+        lock.lock()
+        defer { lock.unlock() }
+        closeLocked()
+    }
+
+    private static func openLocked() throws {
         guard !opened else { return }
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSMC"))
         guard service != 0 else { throw SMCError.driverNotFound }
@@ -110,7 +129,7 @@ enum SMC {
         opened = true
     }
 
-    static func close() {
+    private static func closeLocked() {
         if opened {
             _ = IOServiceClose(connection)
             connection = 0
@@ -119,22 +138,34 @@ enum SMC {
     }
 
     static func readBytes(_ key: FourCharCode) throws -> SMCBytes {
-        try openIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        return try readBytesLocked(key)
+    }
+
+    private static func readBytesLocked(_ key: FourCharCode) throws -> SMCBytes {
         var input = SMCParamStruct()
         input.key = key
         input.data8 = SMCParamStruct.Selector.kSMCReadKey.rawValue
         input.keyInfo.dataSize = 32
-        let output = try call(&input)
+        let output = try callLocked(&input)
         return output.bytes
     }
 
     static func keyInfo(_ key: FourCharCode) throws -> (dataSize: UInt32, dataType: UInt32) {
-        try openIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        return try keyInfoLocked(key)
+    }
+
+    private static func keyInfoLocked(_ key: FourCharCode) throws -> (dataSize: UInt32, dataType: UInt32) {
         var input = SMCParamStruct()
         input.key = key
         input.data8 = SMCParamStruct.Selector.kSMCReadKey.rawValue
         input.keyInfo.dataSize = 32
-        let output = try call(&input)
+        let output = try callLocked(&input)
         return (output.keyInfo.dataSize, output.keyInfo.dataType)
     }
 
@@ -143,12 +174,14 @@ enum SMC {
     /// populates key metadata; on firmware with unpopulated metadata (size 0
     /// for existing keys) the read itself decides.
     static func readUInt32(_ key: FourCharCode) throws -> UInt32 {
-        try openIfNeeded()
-        let info = try? keyInfo(key)
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        let info = try? keyInfoLocked(key)
         if let info, info.dataSize != 0, info.dataSize != 4 {
             throw SMCError.invalidDataSize(key: key, expected: 4, actual: Int(info.dataSize))
         }
-        let bytes = try readBytes(key)
+        let bytes = try readBytesLocked(key)
         return UInt32(bytes.0) << 24 | UInt32(bytes.1) << 16
             | UInt32(bytes.2) << 8 | UInt32(bytes.3)
     }
@@ -156,12 +189,14 @@ enum SMC {
     /// Little-endian uint32 read (used by the firmware-limit keys, which
     /// store percentages in the non-conventional byte order).
     static func readUInt32LE(_ key: FourCharCode) throws -> UInt32 {
-        try openIfNeeded()
-        let info = try? keyInfo(key)
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        let info = try? keyInfoLocked(key)
         if let info, info.dataSize != 0, info.dataSize != 4 {
             throw SMCError.invalidDataSize(key: key, expected: 4, actual: Int(info.dataSize))
         }
-        let bytes = try readBytes(key)
+        let bytes = try readBytesLocked(key)
         return UInt32(bytes.3) << 24 | UInt32(bytes.2) << 16
             | UInt32(bytes.1) << 8 | UInt32(bytes.0)
     }
@@ -169,8 +204,10 @@ enum SMC {
     /// Typed uint32 write (big-endian). Width is enforced only when the
     /// firmware populates key metadata; the SMC itself validates on write.
     static func writeUInt32(_ key: FourCharCode, value: UInt32) throws {
-        try openIfNeeded()
-        let info = try? keyInfo(key)
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        let info = try? keyInfoLocked(key)
         if let info, info.dataSize != 0, info.dataSize != 4 {
             throw SMCError.invalidDataSize(key: key, expected: 4, actual: Int(info.dataSize))
         }
@@ -182,13 +219,15 @@ enum SMC {
         input.bytes.1 = UInt8((value >> 16) & 0xFF)
         input.bytes.2 = UInt8((value >> 8) & 0xFF)
         input.bytes.3 = UInt8(value & 0xFF)
-        _ = try call(&input)
+        _ = try callLocked(&input)
     }
 
     /// Little-endian uint32 write (firmware-limit keys).
     static func writeUInt32LE(_ key: FourCharCode, value: UInt32) throws {
-        try openIfNeeded()
-        let info = try? keyInfo(key)
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
+        let info = try? keyInfoLocked(key)
         if let info, info.dataSize != 0, info.dataSize != 4 {
             throw SMCError.invalidDataSize(key: key, expected: 4, actual: Int(info.dataSize))
         }
@@ -200,27 +239,31 @@ enum SMC {
         input.bytes.1 = UInt8((value >> 8) & 0xFF)
         input.bytes.2 = UInt8((value >> 16) & 0xFF)
         input.bytes.3 = UInt8((value >> 24) & 0xFF)
-        _ = try call(&input)
+        _ = try callLocked(&input)
     }
 
     static func writeUInt8(_ key: FourCharCode, value: UInt8) throws {
-        try openIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
         var input = SMCParamStruct()
         input.key = key
         input.keyInfo.dataSize = 1
         input.data8 = SMCParamStruct.Selector.kSMCWriteKey.rawValue
         input.bytes.0 = value
-        _ = try call(&input)
+        _ = try callLocked(&input)
     }
 
     /// Total number of keys the SMC exposes. Reads the special "#KEY" key.
     static func keyCount() throws -> UInt32 {
-        try openIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
         var input = SMCParamStruct()
         input.key = FourCharCode(fromStaticString: "#KEY")
         input.data8 = SMCParamStruct.Selector.kSMCReadKey.rawValue
         input.keyInfo.dataSize = 4
-        let output = try call(&input)
+        let output = try callLocked(&input)
         return UInt32(output.bytes.0) << 24 | UInt32(output.bytes.1) << 16
             | UInt32(output.bytes.2) << 8 | UInt32(output.bytes.3)
     }
@@ -228,26 +271,28 @@ enum SMC {
     /// Key at a table index (kSMCGetKeyFromIndex). Used for full-key-table
     /// enumeration in the diagnostics probe.
     static func key(atIndex index: UInt32) throws -> (key: FourCharCode, dataSize: UInt32, dataType: UInt32) {
-        try openIfNeeded()
+        lock.lock()
+        defer { lock.unlock() }
+        try openIfNeededLocked()
         var input = SMCParamStruct()
         input.data8 = SMCParamStruct.Selector.kSMCGetKeyFromIndex.rawValue
         input.data32 = index
-        let output = try call(&input)
+        let output = try callLocked(&input)
         return (output.key, output.keyInfo.dataSize, output.keyInfo.dataType)
     }
 
-    private static func openIfNeeded() throws {
+    private static func openIfNeededLocked() throws {
         do {
-            try open()
+            try openLocked()
         } catch {
             // Retry once from a cold connection.
-            close()
-            try open()
+            closeLocked()
+            try openLocked()
         }
     }
 
     @discardableResult
-    private static func call(_ input: inout SMCParamStruct) throws -> SMCParamStruct {
+    private static func callLocked(_ input: inout SMCParamStruct) throws -> SMCParamStruct {
         assert(MemoryLayout<SMCParamStruct>.stride == 80, "SMCParamStruct size is != 80")
         var output = SMCParamStruct()
         let inSize = MemoryLayout<SMCParamStruct>.stride
@@ -264,7 +309,7 @@ enum SMC {
         case (kIOReturnSuccess, SMCParamStruct.Result.kSMCKeyNotFound.rawValue):
             throw SMCError.keyNotFound
         case (kIOReturnNotPrivileged, _):
-            close()
+            closeLocked()
             throw SMCError.notPrivileged
         default:
             throw SMCError.unknown(kIOReturn: result, smcResult: output.result)

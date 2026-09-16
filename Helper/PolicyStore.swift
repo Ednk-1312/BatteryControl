@@ -28,6 +28,21 @@ final class PolicyStore {
             cached = loaded
             cachedMtime = PolicyStore.modificationDate(of: BatteryXPC.helperConfigPath)
         } else {
+            if FileManager.default.fileExists(atPath: BatteryXPC.helperConfigPath) {
+                // A store that exists but does not decode is quarantined
+                // (never silently overwritten) so a corrupt file can be
+                // inspected later. With atomic saves below this should not
+                // happen; the old non-atomic writer could produce it.
+                let quarantine = "\(BatteryXPC.helperConfigPath).corrupt-\(Int(Date().timeIntervalSince1970))"
+                _ = try? FileManager.default.moveItem(
+                    atPath: BatteryXPC.helperConfigPath,
+                    toPath: quarantine
+                )
+                DaemonLog.error(
+                    "Policy store was unreadable and has been quarantined to \(quarantine); starting from defaults.",
+                    operation: "startup"
+                )
+            }
             cached = StoredState(
                 policy: .passthrough(),
                 override: .none,
@@ -66,18 +81,41 @@ final class PolicyStore {
     }
 
     private func save() {
+        // Called with `queue` held.
         let dir = (path as NSString).deletingLastPathComponent
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [
             .posixPermissions: 0o755,
         ])
         guard let data = try? JSONEncoder().encode(cached) else { return }
-        if !FileManager.default.fileExists(atPath: path) {
-            FileManager.default.createFile(atPath: path, contents: data, attributes: [
-                .posixPermissions: 0o600,
-            ])
-        } else {
-            try? data.write(to: URL(fileURLWithPath: path))
+        // Atomic replacement. A crash mid-write must never truncate or
+        // corrupt the store: decode failure silently reverts the charging
+        // policy to passthrough (limit gone, battery charges to 100%).
+        // Write a complete temp file in the same directory, fsync it, then
+        // rename(2) it over the target — readers observe either the old or
+        // the new file, never a partial one.
+        let tmp = "\(path).tmp-\(UUID().uuidString)"
+        guard FileManager.default.createFile(atPath: tmp, contents: data, attributes: [
+            .posixPermissions: 0o600,
+        ]), let handle = FileHandle(forUpdatingAtPath: tmp) else {
+            try? FileManager.default.removeItem(atPath: tmp)
+            return
         }
+        _ = try? handle.synchronize() // fsync the data before the rename
+        try? handle.close()
+        let renamed: Bool
+        if FileManager.default.fileExists(atPath: path) {
+            renamed = (try? FileManager.default.replaceItemAt(
+                URL(fileURLWithPath: path),
+                withItemAt: URL(fileURLWithPath: tmp)
+            )) != nil
+        } else {
+            renamed = (try? FileManager.default.moveItem(atPath: tmp, toPath: path)) != nil
+        }
+        guard renamed else {
+            try? FileManager.default.removeItem(atPath: tmp)
+            return
+        }
+        cachedMtime = PolicyStore.modificationDate(of: path)
     }
 
     private static func load(from path: String) -> StoredState? {

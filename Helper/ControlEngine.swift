@@ -42,6 +42,22 @@ final class ControlEngine {
 
     let engineQueue = DispatchQueue(label: "com.batterycontrol.daemon.engine")
 
+    /// Guards ALL mutable engine state. The serial `engineQueue` alone is
+    /// not enough: XPC handler threads call the command methods (and read
+    /// snapshot state) directly on their own queues, and the retry timer
+    /// re-enters verification from `asyncAfter`. Everything that touches
+    /// engine fields runs under this lock; it is recursive because the
+    /// call graph nests (tick → apply → verify) on one thread. Lock order
+    /// is always engineLock → (store | log | SMC) — never the reverse —
+    /// so no cycle is possible.
+    private let engineLock = NSRecursiveLock()
+
+    private func locked<T>(_ body: () throws -> T) rethrows -> T {
+        engineLock.lock()
+        defer { engineLock.unlock() }
+        return try body()
+    }
+
     var daemonVersion: String { BatteryXPC.expectedHelperVersion }
     var uptime: TimeInterval { Date().timeIntervalSince(startInstant) }
 
@@ -180,6 +196,11 @@ final class ControlEngine {
     }
 
     private func tickNow(reason: ControlRequestReason) {
+        locked { tickNowUnserialized(reason: reason) }
+    }
+
+    /// Must run under `engineLock`.
+    private func tickNowUnserialized(reason: ControlRequestReason) {
         guard let readings = PlatformDetector.readBatteryFromIOKit() else {
             DaemonLog.warning("No internal battery detected; nothing to control.", operation: "tick")
             return
@@ -351,10 +372,23 @@ final class ControlEngine {
 
     private func applyIfNeeded(action: ChargingAction, readings: BatteryReadings, reason: ControlRequestReason) {
         // `.hold` means "keep whatever is applied" — nothing to do unless the
-        // previous attempt is unverified.
+        // previous attempt is unverified. A `.hold` after a just-resolved
+        // override must never re-apply the override's action (a cancelled
+        // discharge would re-latch its adapter cut); resolve to the policy's
+        // natural action instead.
         if action == .hold {
             if controlIsVerified { return }
-            runVerifiedApply(action: lastHeldAction ?? .normal, readings: readings, reason: reason)
+            let resolved: ChargingAction
+            if let lastHeldAction, lastHeldAction != .forceDischarge {
+                resolved = lastHeldAction
+            } else {
+                resolved = RecoveryDecisions.resolvedHoldAction(
+                    lastHeld: lastHeldAction,
+                    policy: store.state.policy,
+                    connected: readings.isExternalConnected
+                )
+            }
+            runVerifiedApply(action: resolved, readings: readings, reason: reason)
             return
         }
 
@@ -413,7 +447,18 @@ final class ControlEngine {
     }
 
     /// Observe the battery state to confirm the requested transition.
+    /// Runs under `engineLock` (also re-entered from the retry timer).
     private func verifyNow(
+        action: ChargingAction,
+        readings: BatteryReadings,
+        attemptNumber attempt: Int,
+        reason: ControlRequestReason = .policyTick
+    ) {
+        locked { verifyNowUnserialized(action: action, readings: readings, attemptNumber: attempt, reason: reason) }
+    }
+
+    /// Must run under `engineLock`.
+    private func verifyNowUnserialized(
         action: ChargingAction,
         readings: BatteryReadings,
         attemptNumber attempt: Int,
@@ -511,10 +556,12 @@ final class ControlEngine {
     }
 
     func woke() {
-        DaemonLog.info("Wake: re-applying charging policy.", operation: "recovery")
-        // The SMC state may have been reset across sleep; re-apply and verify.
-        controlIsVerified = false
-        tick(reason: .sleepWakeRecovery)
+        locked {
+            DaemonLog.info("Wake: re-applying charging policy.", operation: "recovery")
+            // The SMC state may have been reset across sleep; re-apply and verify.
+            controlIsVerified = false
+            tick(reason: .sleepWakeRecovery)
+        }
     }
 
     func sleeping() {
@@ -527,107 +574,131 @@ final class ControlEngine {
     // MARK: Snapshot
 
     func snapshot(helperStatus: HelperStatus) -> BatteryStatusSnapshot {
-        BatteryStatusSnapshot(
-            readings: lastReadings,
-            activePolicy: store.state.policy,
-            activeOverride: store.state.override,
-            activeCalibration: store.state.calibration,
-            controlIsVerified: controlIsVerified,
-            activeBackendID: activeBackend.id.rawValue,
-            capabilities: capabilities,
-            helperStatus: helperStatus,
-            firmwareProfileTier: firmwareProfileTier,
-        )
+        locked {
+            BatteryStatusSnapshot(
+                readings: lastReadings,
+                activePolicy: store.state.policy,
+                activeOverride: store.state.override,
+                activeCalibration: store.state.calibration,
+                controlIsVerified: controlIsVerified,
+                activeBackendID: activeBackend.id.rawValue,
+                capabilities: capabilities,
+                helperStatus: helperStatus,
+                firmwareProfileTier: firmwareProfileTier,
+            )
+        }
+    }
+
+    /// One locked read of the full status payload for the XPC handler
+    /// (which runs on a connection queue, not the engine queue).
+    func statusPayload(helperStatus: HelperStatus) -> (snapshot: BatteryStatusSnapshot, lastAttempt: ControlAttemptResult?, lastError: DiagnosticEntry?) {
+        locked {
+            (snapshot(helperStatus: helperStatus), lastAttempt, lastError)
+        }
     }
 
     // MARK: Commands from XPC (validated upstream)
 
     func applyPolicy(_ policy: ChargingPolicy) -> Bool {
-        guard isPlatformSupported else { return false }
-        guard ControlModeHelpers.validate(policy) == nil else { return false }
-        store.update { $0.policy = policy }
-        tickNow(reason: .userRequest)
-        return true
+        locked {
+            guard isPlatformSupported else { return false }
+            guard ControlModeHelpers.validate(policy) == nil else { return false }
+            store.update { $0.policy = policy }
+            tickNow(reason: .userRequest)
+            return true
+        }
     }
 
     func startForceDischarge(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool = false) -> Bool {
-        guard isPlatformSupported else { return false }
-        let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: floorPercent)
-        let target = min(max(targetPercent, 1), 100)
-        // Never discharge toward a target below the floor.
-        guard target >= floor else { return false }
-        // Below-safety-floor sessions require explicit user consent; without
-        // it the floor is clamped back up to the safety floor.
-        let consented = ChargingPolicyEngine.requiresBelowFloorConsent(floor: floor) && belowFloorConsent
-        let effectiveFloor = consented ? floor : max(floor, ChargingPolicyEngine.minimumDischargeFloor)
-        store.update {
-            $0.override = .forceDischarge(
-                targetPercent: target,
-                floorPercent: effectiveFloor,
-                belowFloorConsent: consented
-            )
+        locked {
+            guard isPlatformSupported else { return false }
+            let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: floorPercent)
+            let target = min(max(targetPercent, 1), 100)
+            // Never discharge toward a target below the floor.
+            guard target >= floor else { return false }
+            // Below-safety-floor sessions require explicit user consent; without
+            // it the floor is clamped back up to the safety floor.
+            let consented = ChargingPolicyEngine.requiresBelowFloorConsent(floor: floor) && belowFloorConsent
+            let effectiveFloor = consented ? floor : max(floor, ChargingPolicyEngine.minimumDischargeFloor)
+            store.update {
+                $0.override = .forceDischarge(
+                    targetPercent: target,
+                    floorPercent: effectiveFloor,
+                    belowFloorConsent: consented
+                )
+            }
+            if consented {
+                DaemonLog.warning(
+                    "Force discharge below the safety floor (floor \(effectiveFloor)%, target \(target)%): user accepted accelerated battery degradation.",
+                    operation: "forceDischarge"
+                )
+            }
+            tickNow(reason: .userRequest)
+            return true
         }
-        if consented {
-            DaemonLog.warning(
-                "Force discharge below the safety floor (floor \(effectiveFloor)%, target \(target)%): user accepted accelerated battery degradation.",
-                operation: "forceDischarge"
-            )
-        }
-        tickNow(reason: .userRequest)
-        return true
     }
 
     func startForceCharge(targetPercent: Int) -> Bool {
-        guard isPlatformSupported else { return false }
-        let target = min(max(targetPercent, 1), 100)
-        store.update { $0.override = .forceCharge(targetPercent: target) }
-        tickNow(reason: .userRequest)
-        return true
+        locked {
+            guard isPlatformSupported else { return false }
+            let target = min(max(targetPercent, 1), 100)
+            store.update { $0.override = .forceCharge(targetPercent: target) }
+            tickNow(reason: .userRequest)
+            return true
+        }
     }
 
     func cancelOverrides() {
-        store.update { $0.override = .none }
-        controlIsVerified = false
-        tickNow(reason: .userRequest)
+        locked {
+            store.update { $0.override = .none }
+            controlIsVerified = false
+            tickNow(reason: .userRequest)
+        }
     }
 
     func beginCalibration() -> Bool {
-        guard isPlatformSupported else { return false }
-        guard capabilities.supportsCalibration else { return false }
-        // The cycle ends at the user's charge limit (e.g. 80%), so the
-        // battery finishes resting at the limit on wall power.
-        let limit = min(max(store.state.policy.upperLimit, 1), 100)
-        var session = CalibrationSession(
-            lowPercent: CalibrationDecisions.Limits.calibrationLowPercent,
-            limitPercent: limit
-        )
-        session.advance(to: .prepare)
-        store.update { $0.calibration = session }
-        tickNow(reason: .calibration)
-        return true
+        locked {
+            guard isPlatformSupported else { return false }
+            guard capabilities.supportsCalibration else { return false }
+            // The cycle ends at the user's charge limit (e.g. 80%), so the
+            // battery finishes resting at the limit on wall power.
+            let limit = min(max(store.state.policy.upperLimit, 1), 100)
+            var session = CalibrationSession(
+                lowPercent: CalibrationDecisions.Limits.calibrationLowPercent,
+                limitPercent: limit
+            )
+            session.advance(to: .prepare)
+            store.update { $0.calibration = session }
+            tickNow(reason: .calibration)
+            return true
+        }
     }
 
     func cancelCalibration() {
-        store.update { $0.calibration = nil }
-        tickNow(reason: .userRequest)
+        locked {
+            store.update { $0.calibration = nil }
+            tickNow(reason: .userRequest)
+        }
     }
 
     func diagnostics() -> DiagnosticsReport {
-        DiagnosticsReport(
-            platform: PlatformDetector.detect(),
-            backendID: activeBackend.id.rawValue,
-            backendDescription: activeBackend.description,
-            capabilities: capabilities,
-            currentAction: lastHeldAction ?? .normal,
-            requestedAction: desiredAction,
-            verified: controlIsVerified,
-            lastAttempt: lastAttempt,
-            lastError: lastError,
-            daemonVersion: daemonVersion,
-            helperUptimeSeconds: uptime,
-            recentLogEntries: DaemonLog.recentEntries(),
-            firmwareProfileTier: firmwareProfileTier.rawValue,
-            firmwareProfileSummary: firmwareProfileSummary
-        )
+        locked {
+            DiagnosticsReport(
+                platform: PlatformDetector.detect(),
+                backendID: activeBackend.id.rawValue,
+                backendDescription: activeBackend.description,
+                capabilities: capabilities,
+                currentAction: lastHeldAction ?? .normal,
+                requestedAction: desiredAction,
+                verified: controlIsVerified,
+                lastAttempt: lastAttempt,
+                lastError: lastError,
+                daemonVersion: daemonVersion,
+                helperUptimeSeconds: uptime,
+                recentLogEntries: DaemonLog.recentEntries(),
+                firmwareProfileTier: firmwareProfileTier.rawValue,
+                firmwareProfileSummary: firmwareProfileSummary
+            )
+        }
     }
 }
