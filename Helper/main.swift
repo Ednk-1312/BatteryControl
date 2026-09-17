@@ -764,9 +764,10 @@ guard platform.isSupportedPlatform else {
 let store = PolicyStore()
 let engine = ControlEngine(store: store)
 let monitor = EventMonitor(engine: engine)
-monitor.start()
-
-// Primary enforcement tick.
+monitor.start()// Primary enforcement tick. The tick handler is a no-op until hardware
+// init completes (see ControlEngine.beginHardwareInit for why hardware
+// probing is deferred): the timer can therefore be scheduled immediately
+// without racing initialization.
 let tickTimer = DispatchSource.makeTimerSource(queue: engine.engineQueue)
 tickTimer.schedule(deadline: .now() + 1,
                    repeating: RecoveryDecisions.tickIntervalSeconds)
@@ -775,6 +776,14 @@ tickTimer.resume()
 
 let server = DaemonXPCServer(engine: engine)
 server.run()
+
+// Two-phase startup: the XPC listener is already accepting connections.
+// Hardware probing (backend selection, boot recovery, first enforcement
+// tick) runs on the engine queue in the background; a wedged SMC now
+// degrades to an honest "probing hardware" status instead of a daemon
+// that never answers. A watchdog exits the process if probing blocks
+// past ControlEngine.hardwareInitDeadline so launchd can respawn it.
+engine.beginHardwareInit()
 
 DaemonLog.info("Daemon ready: \(platform.summaryLine).", operation: "startup")
 dispatchMain()

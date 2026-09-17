@@ -66,17 +66,79 @@ final class ControlEngine {
 
     // MARK: Init
 
-    /// The real initializer. `skipHardwareInit` produces an engine with an
-    /// observation-only backend and no SMC access (unsupported machines).
+    /// The real initializer. Deliberately CHEAP: no hardware probing, no
+    /// SMC access. The SMC user-client is a synchronous, unbounded kernel
+    /// interface — if it wedges (observed after SIGKILL of a live daemon:
+    /// subsequent SMC opens hang in the kernel), an init that probes SMC
+    /// here would hang the daemon BEFORE the XPC listener starts, leaving
+    /// no way for clients to even see an honest status. Hardware init runs
+    /// later via `beginHardwareInit()` on the engine queue.
     init(store: PolicyStore, skipHardwareInit: Bool = false) {
         self.store = store
 
+        // Cheap safe-by-default state: observation-only backend, nothing
+        // verified, honest "probing" summary. If hardware init never runs
+        // (or wedges and the watchdog restarts us), clients see exactly
+        // that instead of stale or fabricated control state.
+        activeBackend = ObservationOnlyBackend()
+        firmwareProfileSummary = "Probing hardware…"
+
         guard !skipHardwareInit else {
-            activeBackend = ObservationOnlyBackend()
             firmwareProfileTier = .unsupported
             firmwareProfileSummary = "Hardware probing skipped."
             return
         }
+    }
+
+    /// Two-phase init, phase 2: hardware probing. Runs on the engine queue
+    /// AFTER the XPC listener is already accepting connections, so a wedged
+    /// SMC degrades to an honest "probing hardware" state instead of a
+    /// silent, unreachable daemon. A watchdog forces process exit if the
+    /// probe blocks past the deadline — launchd respawns a fresh daemon.
+    func beginHardwareInit() {
+        engineQueue.async { [weak self] in
+            guard let self else { return }
+            self.locked {
+                self.hardwareInitUnlocked()
+            }
+        }
+        // Watchdog: a hung probe never recovers on its own (the kernel call
+        // has no timeout), so the only self-healing path is exit-and-be-
+        // respawned. launchd KeepAlive restarts the daemon. The watchdog
+        // must NOT run on the engine queue (a hung probe blocks that queue
+        // forever) and must not take engineLock (the hung probe holds it):
+        // it lives on a global queue and reads a dedicated flag.
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.hardwareInitDeadline) { [weak self] in
+            guard let self else { return }
+            if !self.hardwareInitComplete {
+                DaemonLog.error(
+                    "Hardware init did not complete within \(Int(Self.hardwareInitDeadline))s; exiting so launchd can restart the daemon.",
+                    operation: "startup"
+                )
+                exit(3)
+            }
+        }
+    }
+
+    /// Deadline for the hardware-init phase. Generous: normal probing is
+    /// sub-second, but after an SMC wedge the first respawn may hang again;
+    /// each watchdog exit forces a fresh process (fresh mach ports) until
+    /// the kernel path recovers.
+    static let hardwareInitDeadline: TimeInterval = 45
+
+    /// Init-completion flag with its own lock (read by the watchdog, which
+    /// cannot take engineLock — the hung probe holds it). Lock order is
+    /// always engineLock → watchdogLock, never the reverse.
+    private let watchdogLock = NSLock()
+    private var _hardwareInitComplete = false
+    private var hardwareInitComplete: Bool {
+        get { watchdogLock.lock(); defer { watchdogLock.unlock() }; return _hardwareInitComplete }
+        set { watchdogLock.lock(); _hardwareInitComplete = newValue; watchdogLock.unlock() }
+    }
+
+    /// Must run under `engineLock` on the engine queue.
+    private func hardwareInitUnlocked() {
+        guard !hardwareInitComplete else { return }
 
         let all: [ChargingBackend] = [
             FirmwareLimitBackend(), PMAssertionBackend(), SMCInhibitBackend(), CHWABackend(), ObservationOnlyBackend(),
@@ -166,6 +228,9 @@ final class ControlEngine {
         // re-apply the persisted policy. (Releasing a cut is always the
         // safe direction.)
         _ = SMCChargeControl.releaseAllAdaptersIfNeeded()
+        // Hardware init is done: cancel the watchdog's concern and start
+        // the enforcement loop. (tickNow is async — no re-entrancy here.)
+        hardwareInitComplete = true
         engineQueue.async { [weak self] in
             self?.tickNow(reason: .bootRecovery)
         }
@@ -201,6 +266,11 @@ final class ControlEngine {
 
     /// Must run under `engineLock`.
     private func tickNowUnserialized(reason: ControlRequestReason) {
+        // Two-phase startup: the periodic tick timer is live before hardware
+        // probing finishes. Ticking with the placeholder observation backend
+        // would silently mis-report state; probing's final act is the boot-
+        // recovery tick, so pre-init ticks are a pure no-op.
+        guard hardwareInitComplete else { return }
         guard let readings = PlatformDetector.readBatteryFromIOKit() else {
             DaemonLog.warning("No internal battery detected; nothing to control.", operation: "tick")
             return
