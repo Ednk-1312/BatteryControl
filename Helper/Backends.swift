@@ -229,13 +229,17 @@ final class FirmwareLimitBackend: ChargingBackend, ChargingPolicyConfigurable {
         }
 
         // Validate declared shapes when the firmware populates them; treat
-        // unpopulated metadata (0) as unknown-but-usable.
+        // unpopulated metadata (0) as unknown-but-usable. The acceptance
+        // rule lives in FirmwareLimitValidation (BatteryCore) so it is
+        // unit-tested against negative shapes.
         let actInfo = try? SMC.keyInfo(Self.activationKey)
         let upInfo = try? SMC.keyInfo(Self.upperKey)
         let loInfo = try? SMC.keyInfo(Self.lowerKey)
-        let shapesKnown = [actInfo?.dataSize, upInfo?.dataSize, loInfo?.dataSize].map { $0 ?? 0 }
-        let shapesValid = shapesKnown.allSatisfy { $0 == 0 }
-            || (actInfo?.dataSize == 1 && upInfo?.dataSize == 4 && loInfo?.dataSize == 4)
+        let shapesValid = FirmwareLimitValidation.keyShapesAreAcceptable([
+            "bfF0": Int(actInfo?.dataSize ?? 0),
+            "bfD0": Int(upInfo?.dataSize ?? 0),
+            "bfE0": Int(loInfo?.dataSize ?? 0),
+        ])
         guard shapesValid else {
             DaemonLog.warning(
                 "Firmware-limit keys present with unexpected shapes (act=\(actInfo?.dataSize ?? 0)B, up=\(upInfo?.dataSize ?? 0)B, lo=\(loInfo?.dataSize ?? 0)B) — refusing.",
@@ -409,11 +413,18 @@ final class FirmwareLimitBackend: ChargingBackend, ChargingPolicyConfigurable {
             return .failure(ControlError("Firmware-limit write failed: \(error)"))
         }
 
-        // Verify by readback, with bounded retries.
+        // Verify by readback, with bounded retries. The confirmation rule
+        // is FirmwareLimitValidation.readbackConfirms (unit-tested).
         for attempt in 1...3 {
             Thread.sleep(forTimeInterval: 0.2)
             switch readState() {
-            case .success(let s) where s.active && s.upperPercent == UInt32(upper) && s.lowerPercent == UInt32(lower):
+            case .success(let s) where FirmwareLimitValidation.readbackConfirms(
+                activationByte: activationByteNow(),
+                upperPercent: s.upperPercent,
+                lowerPercent: s.lowerPercent,
+                requestedUpper: upper,
+                requestedLower: lower
+            ):
                 DaemonLog.info(
                     "Firmware limit verified: active, upper=\(s.upperPercent), lower=\(s.lowerPercent) (attempt \(attempt)).",
                     operation: "apply",
@@ -484,6 +495,11 @@ final class FirmwareLimitBackend: ChargingBackend, ChargingPolicyConfigurable {
         case .failure(let err):
             return .failure(err)
         }
+    }
+
+    /// The activation byte as of right now (0 when unreadable).
+    private func activationByteNow() -> UInt8 {
+        (try? SMC.readBytes(Self.activationKey).0) ?? 0
     }
 
     /// Best-effort forced deactivation. Returns whether the readback confirms it.

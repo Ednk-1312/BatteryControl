@@ -57,12 +57,29 @@ struct SettingsView: View {
             Section("About") {
                 LabeledContent("Version", value: appVersion)
                 LabeledContent("Scope", value: "Apple Silicon M1–M4 · macOS 15")
+                if let tier = appState.snapshot?.firmwareProfileTier {
+                    LabeledContent("This Mac", value: tierHeadline(tier))
+                    Text(DashboardSummary.compatibilityLine(tier: tier))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text("BatteryControl is honest by design: controls that cannot be verified are shown as unverified, and features the hardware does not support are disabled rather than faked.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Short tier headline for Settings; the plain-language explanation is
+    /// shared with the dashboard via DashboardSummary.
+    private func tierHeadline(_ tier: FirmwareProfileTier) -> String {
+        switch tier {
+        case .verified: return "Hardware verified"
+        case .compatibleByCapability: return "Capability compatible"
+        case .untested: return "Read-only (untested firmware)"
+        case .unsupported: return "Unsupported"
+        }
     }
 
     private var appVersion: String {

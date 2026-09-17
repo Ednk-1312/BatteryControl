@@ -50,8 +50,8 @@ struct BatteryInformationView: View {
             Section("Control") {
                 infoRow("Charging mode", appState.snapshot?.activePolicy.summary ?? "—")
                 if let policy = appState.snapshot?.activePolicy, policy.mode == .hysteresis {
-                    infoRow("Upper limit", "\(policy.upperLimit)%")
-                    infoRow("Lower limit", "\(policy.lowerLimit)%")
+                    infoRow("Charge limit", "\(policy.upperLimit)%")
+                    infoRow("Resumes at", "\(policy.lowerLimit)%")
                 }
                 infoRow("Active backend", appState.snapshot.map { BackendID($0.activeBackendID).displayName } ?? "—")
                 infoRow("Control verified", appState.snapshot?.controlIsVerified == true ? "Yes" : "Not yet")
@@ -217,12 +217,14 @@ struct DiagnosticsView: View {
         }
     }
 
-    /// Human labels for the firmware-profile confidence tiers.
+    /// Human labels for the firmware-profile confidence tiers. Deliberately
+    /// unambiguous: "verified" is only claimed for physically tested
+    /// model+firmware evidence; capability matches are labeled as such.
     private func tierDisplay(_ raw: String) -> String {
         switch raw {
-        case "verified": return "Verified on this firmware ✅"
-        case "compatibleByCapability": return "Compatible by capability"
-        case "untested": return "Untested firmware"
+        case "verified": return "Verified on this firmware (physically tested)"
+        case "compatibleByCapability": return "Compatible by capability (this exact firmware not physically tested)"
+        case "untested": return "Untested firmware (read-only)"
         case "unsupported": return "Unsupported"
         default: return raw
         }

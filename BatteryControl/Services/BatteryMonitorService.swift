@@ -91,6 +91,9 @@ final class AppState: ObservableObject {
         snapshot?.readings ?? batteryMonitor.readings ?? .placeholder
     }
 
+    /// Concise policy summary for the menu bar. States the user's charge
+    /// limit only — the lower hysteresis threshold is resume behavior, not
+    /// a second "limit" (it leaked into this line as "· lower 78%").
     var controlSummary: String {
         guard let snapshot else { return helperStatusText }
         if !isSupported { return "Unsupported platform" }
@@ -98,7 +101,7 @@ final class AppState: ObservableObject {
         case .passthrough:
             return "macOS default charging"
         case .hysteresis:
-            return "Limit \(snapshot.activePolicy.upperLimit)% · lower \(snapshot.activePolicy.lowerLimit)%"
+            return "Charge limit \(snapshot.activePolicy.upperLimit)%"
         case .fixedTarget:
             return "Maintain about \(snapshot.activePolicy.upperLimit)%"
         }

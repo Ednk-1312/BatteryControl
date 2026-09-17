@@ -89,7 +89,7 @@ final class MenuBarController {
             menu.addItem(statusLine)
 
             let verified = NSMenuItem(
-                title: snapshot.controlIsVerified ? "Control: Verified" : "Control: Not verified",
+                title: "Control: \(DashboardSummary.controlStatus(snapshot: snapshot, isSupportedPlatform: true))",
                 action: nil,
                 keyEquivalent: ""
             )

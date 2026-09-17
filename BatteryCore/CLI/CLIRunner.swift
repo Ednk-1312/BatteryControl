@@ -284,13 +284,11 @@ public enum CLIRunner {
         switch s.activePolicy.mode {
         case .hysteresis:
             lines.append("Charge Limit:         \(s.activePolicy.upperLimit)%")
-            lines.append("Lower Limit:          \(s.activePolicy.lowerLimit)%")
+            lines.append("Resumes At:           \(s.activePolicy.lowerLimit)%")
         case .fixedTarget:
             lines.append("Charge Limit:         ~\(s.activePolicy.upperLimit)%")
-            lines.append("Lower Limit:          —")
         case .passthrough:
             lines.append("Charge Limit:         Off (macOS default)")
-            lines.append("Lower Limit:          —")
         }
 
         if case .forceDischarge(let target, let floor, _) = s.activeOverride {

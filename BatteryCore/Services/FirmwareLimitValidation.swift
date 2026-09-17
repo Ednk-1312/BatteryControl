@@ -51,4 +51,43 @@ public enum FirmwareLimitValidation {
             }
         }
     }
+
+    // MARK: Key-shape acceptance (negative-path logic)
+
+    /// The declared SMC metadata shapes the firmware-limit control path
+    /// accepts: activation ui8 (1 byte), upper/lower ui32 (4 bytes). Zero
+    /// means the firmware leaves key metadata unpopulated even for live
+    /// keys (observed on verified hardware), which is treated as
+    /// unknown-but-usable ONLY because the write path re-confirms every
+    /// value by readback — an unexpected real shape cannot survive that.
+    public static let expectedKeyShapes = [
+        "bfF0": 1,  // ui8 activation
+        "bfD0": 4,  // ui32 upper percentage (little-endian)
+        "bfE0": 4,  // ui32 lower percentage (little-endian)
+    ]
+
+    /// Decides whether reported key data sizes are acceptable for control.
+    /// Pure; the daemon probe applies this before declaring the backend
+    /// available (Part 9 of the compatibility audit: capability detection
+    /// must match the actual control path — the control path reads bfF0 as
+    /// 1 byte and bfD0/bfE0 as 4-byte little-endian values).
+    public static func keyShapesAreAcceptable(_ sizes: [String: Int]) -> Bool {
+        for (key, expected) in expectedKeyShapes.sorted(by: { $0.key < $1.key }) {
+            let actual = sizes[key]
+            guard let actual else { return false } // a required key unreported
+            // 0 = unpopulated metadata (unknown-but-usable); anything else
+            // must match the expected width exactly.
+            if actual != 0 && actual != expected { return false }
+        }
+        return true
+    }
+
+    /// Decides whether a post-write readback of the programmed limit
+    /// confirms the request. Pure; used by the backend's verification loop
+    /// (activation byte must read active, both percentages must match).
+    public static func readbackConfirms(activationByte: UInt8, upperPercent: UInt32, lowerPercent: UInt32, requestedUpper: Int, requestedLower: Int) -> Bool {
+        activationByte == 0x02
+            && upperPercent == UInt32(requestedUpper)
+            && lowerPercent == UInt32(requestedLower)
+    }
 }

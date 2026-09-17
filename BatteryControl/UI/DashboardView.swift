@@ -9,12 +9,38 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                daemonUnavailableBanner
                 statusRow
                 banners
                 controls
                 quickFacts
             }
             .padding(20)
+        }
+    }
+
+    /// State-matrix row "daemon unavailable": an explicit banner instead of
+    /// silently keeping stale values — and the control tile reads
+    /// "Unavailable", never "Verified" (enforced by DashboardSummary).
+    @ViewBuilder
+    private var daemonUnavailableBanner: some View {
+        if appState.snapshot == nil {
+            HStack(spacing: 10) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Can't reach the privileged helper")
+                        .font(.headline)
+                    Text("Charging control status is unknown until the connection is restored. Your saved settings are safe and will be re-applied by the helper.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Retry") { appState.poll() }
+                    .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
         }
     }
 
@@ -104,14 +130,10 @@ struct DashboardView: View {
     }
 
     /// The user-facing limit is the number the user set ("80%"), not the
-    /// internal hysteresis band. The lower limit is explained in Quick Facts
-    /// and configured in Charging — showing "78–80%" here made a fixed
-    /// 80% limit read as a moving target.
+    /// internal hysteresis band. Derived from the shared, tested
+    /// DashboardSummary model — the single definition of this semantics.
     private var limitText: String {
-        guard let policy = appState.snapshot?.activePolicy, policy.mode != .passthrough else {
-            return "None"
-        }
-        return "\(policy.upperLimit)%"
+        DashboardSummary.primaryLimitText(policy: appState.snapshot?.activePolicy)
     }
 
     private var backendText: String {
@@ -120,11 +142,7 @@ struct DashboardView: View {
     }
 
     private var controlText: String {
-        guard let snapshot = appState.snapshot, appState.isSupported else { return "—" }
-        if snapshot.activePolicy.mode == .passthrough && !snapshot.isForceDischarging && !snapshot.isForceCharging {
-            return "macOS managed"
-        }
-        return snapshot.controlIsVerified ? "Verified" : "Not verified"
+        DashboardSummary.controlStatus(snapshot: appState.snapshot, isSupportedPlatform: appState.isSupported)
     }
 
     // MARK: Banners
@@ -188,7 +206,7 @@ struct DashboardView: View {
                     ChargingSettingsView()
                 } label: {
                     BigControlButton(
-                        title: "Upper Limit",
+                        title: "Charge Limit",
                         subtitle: "Set where charging stops",
                         icon: "gauge.with.dots.needle.bottom.50percent"
                     )
@@ -232,13 +250,17 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: Quick facts
+    // MARK: Charging behavior (the hysteresis explanation)
 
+    /// Explains the band in USER terms. The lower hysteresis threshold is
+    /// presented as when charging RESUMES — never as a second "limit"
+    /// (the old "Lower limit: 78%" card leaked an implementation detail
+    /// as if it were the user's charge limit).
     private var quickFacts: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Lower limit")
+            Text(DashboardSummary.chargingBehaviorTitle(policy: appState.snapshot?.activePolicy))
                 .font(.subheadline.weight(.medium))
-            Text(lowerThresholdText)
+            Text(behaviorText)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let message = appState.lastAckMessage {
@@ -252,13 +274,11 @@ struct DashboardView: View {
         .background(.quinary, in: RoundedRectangle(cornerRadius: 10))
     }
 
-    private var lowerThresholdText: String {
-        guard let policy = appState.snapshot?.activePolicy else { return "Set a charging policy to configure the lower limit." }
-        switch policy.mode {
-        case .passthrough: return "Not used while macOS manages charging."
-        case .hysteresis: return "Lower limit \(policy.lowerLimit)%. Charging resumes when the battery falls to this level, then stops again at the \(policy.upperLimit)% limit."
-        case .fixedTarget: return "Maintains roughly \(policy.upperLimit - ChargingPolicy.fixedTargetBand)–\(policy.upperLimit)%."
+    private var behaviorText: String {
+        guard let policy = appState.snapshot?.activePolicy else {
+            return "BatteryControl can't reach the privileged helper right now, so your charging behavior can't be confirmed. It will reconnect automatically."
         }
+        return DashboardSummary.resumeBehaviorText(policy: policy)
     }
 }
 
