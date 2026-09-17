@@ -18,10 +18,17 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: Status row
+    // MARK: Status grid
 
+    /// A uniform 2×3 grid: every cell identical in size regardless of text
+    /// length, so the dashboard stays visually even (long backend names or
+    /// band values can no longer stretch one tile and squeeze the rest).
     private var statusRow: some View {
-        HStack(spacing: 24) {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3),
+            alignment: .leading,
+            spacing: 12
+        ) {
             statusCell(
                 title: "Battery",
                 value: "\(appState.effectiveReadings.percentage)%",
@@ -38,7 +45,7 @@ struct DashboardView: View {
                 icon: chargingIcon
             )
             statusCell(
-                title: "Limit",
+                title: "Charge Limit",
                 value: limitText,
                 icon: "gauge.with.dots.needle.bottom.50percent"
             )
@@ -53,7 +60,6 @@ struct DashboardView: View {
                 icon: "checkmark.shield"
             )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func statusCell(title: String, value: String, icon: String) -> some View {
@@ -64,6 +70,8 @@ struct DashboardView: View {
             Text(value)
                 .font(.title3.monospacedDigit())
                 .fontWeight(.semibold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -90,24 +98,25 @@ struct DashboardView: View {
     }
 
     private var chargingIcon: String {
-        if appState.snapshot?.isForceDischarging == true { return "bolt.slash" }
+        if appState.snapshot?.isForceDischarging == true { return "bolt.slash.fill" }
         if appState.effectiveReadings.isCharging { return "bolt.fill" }
         return "pause.circle"
     }
 
+    /// The user-facing limit is the number the user set ("80%"), not the
+    /// internal hysteresis band. The lower limit is explained in Quick Facts
+    /// and configured in Charging — showing "78–80%" here made a fixed
+    /// 80% limit read as a moving target.
     private var limitText: String {
         guard let policy = appState.snapshot?.activePolicy, policy.mode != .passthrough else {
             return "None"
-        }
-        if policy.mode == .hysteresis {
-            return "\(policy.lowerLimit)–\(policy.upperLimit)%"
         }
         return "\(policy.upperLimit)%"
     }
 
     private var backendText: String {
         guard let snapshot = appState.snapshot else { return "—" }
-        return BackendID(snapshot.activeBackendID).displayName
+        return BackendID(snapshot.activeBackendID).shortName
     }
 
     private var controlText: String {
@@ -156,7 +165,7 @@ struct DashboardView: View {
             if !snapshot.controlIsVerified,
                snapshot.activePolicy.mode != .passthrough || snapshot.isForceDischarging || snapshot.isForceCharging {
                 HStack(spacing: 10) {
-                    Image(systemName: "questionmark.shield")
+                    Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.yellow)
                     Text("The last control change has not been verified yet. The state is checked continuously and retried a limited number of times.")
                         .font(.callout)
@@ -192,7 +201,7 @@ struct DashboardView: View {
                     BigControlButton(
                         title: "Force Discharge",
                         subtitle: "Drain to a safe target on AC",
-                        icon: "battery.draining"
+                        icon: "bolt.slash.fill"
                     )
                 }
                 .buttonStyle(.plain)

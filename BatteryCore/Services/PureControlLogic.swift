@@ -27,6 +27,20 @@ public struct BackendID: Equatable, Hashable, Sendable {
         default: return rawValue
         }
     }
+
+    /// Compact name for space-constrained status cells (dashboard tiles).
+    /// The full `displayName` stays available for detail views.
+    public var shortName: String {
+        switch rawValue {
+        case BackendID.pmAssertion.rawValue: return "Power assertions"
+        case BackendID.firmwareLimit.rawValue: return "Firmware limit"
+        case BackendID.smcInhibit.rawValue: return "SMC inhibit"
+        case BackendID.smcCHWA.rawValue: return "SMC CHWA"
+        case BackendID.bclmLegacy.rawValue: return "BCLM"
+        case BackendID.fallback.rawValue: return "Observation"
+        default: return rawValue
+        }
+    }
 }
 
 /// Selection logic: pick the best backend given what capability probing
