@@ -57,6 +57,18 @@ public struct XPCStatusResponse: Codable, Equatable, Sendable {
         self.lastError = lastError
         self.daemonVersion = daemonVersion
     }
+
+    /// Stale-response guard for GUI command racing (§ command/monitor race):
+    /// a snapshot the daemon built BEFORE the last command completed does
+    /// not reflect that command's effect, so a client must not present it
+    /// as the final state — it should request a fresh one instead.
+    ///
+    /// Clock note: app and daemon run on the same Mac, so wall-clock
+    /// comparison is valid. `nil` (no command completed yet) always applies.
+    public func isFresh(afterCommandAt completedAt: Date?) -> Bool {
+        guard let completedAt else { return true }
+        return snapshot.timestamp >= completedAt
+    }
 }
 
 public struct ApplyPolicyRequest: Codable, Equatable, Sendable {

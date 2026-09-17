@@ -127,6 +127,14 @@ final class CLICommandTests: XCTestCase {
             lastError: nil,
             daemonVersion: BatteryXPC.expectedHelperVersion
         )
+        // The transport DTO must faithfully carry the honest verified flag
+        // through envelope round-trips (pinning §'s never-fabricate rule).
+        if let envelope = XPCEnvelope.encode(response, kind: XPCEnvelope.kindStatus),
+           let decoded = envelope.decode(XPCStatusResponse.self, expectingKind: XPCEnvelope.kindStatus) {
+            XCTAssertFalse(decoded.snapshot.controlIsVerified)
+        } else {
+            XCTFail("status response must survive envelope round-trip")
+        }
         let render = Mirror(reflecting: CLIRunner.self)
         _ = render // (rendering is private; drive it through the public path below)
         let expectation = expectation(description: "status path")

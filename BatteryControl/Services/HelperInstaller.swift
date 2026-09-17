@@ -66,9 +66,30 @@ final class HelperInstaller {
     }
 
     /// Can the app talk to the daemon right now?
+    ///
+    /// BLOCKING: waits up to ~3s for the XPC round-trip. Only call from a
+    /// background queue (the installer paths do). For main-thread call sites
+    /// use `staticStatus(xpcDead:)` instead.
     func xpcReachable() -> Bool {
-        let probe = DaemonClient.shared
+        let probe = DaemonXPCClient.shared
         return probe.pingSync()
+    }
+
+    /// Status derived only from registration state and file presence —
+    /// never probes XPC, so it never blocks. `xpcDead: true` (the caller
+    /// just observed a failed XPC round-trip) promotes an enabled-looking
+    /// registration to `.unreachable` honestly.
+    func staticStatus(xpcDead: Bool) -> HelperStatus {
+        let base: HelperStatus
+        switch service?.status {
+        case .enabled: base = .running
+        case .requiresApproval: base = .notRunning
+        case .notRegistered: base = filePresent ? .notRunning : .notInstalled
+        case .notFound: base = .notInstalled
+        default: base = filePresent ? .notRunning : .notInstalled
+        }
+        if base == .running, xpcDead { return .unreachable }
+        return base
     }
 
     // MARK: Install / repair
@@ -79,7 +100,8 @@ final class HelperInstaller {
     func install(progress: @escaping (String) -> Void, completion: @escaping (Bool, String) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            progress(InstallStep.registeringWithLaunchd.rawValue)
+            // Progress is a main-queue contract (mutates @Published state).
+            DispatchQueue.main.async { progress(InstallStep.registeringWithLaunchd.rawValue) }
 
             if let service = self.service {
                 switch service.status {
@@ -104,9 +126,9 @@ final class HelperInstaller {
             }
 
             // Verify SMAppService actually took effect; otherwise fall back.
-            progress(InstallStep.bootstrapping.rawValue)
+            DispatchQueue.main.async { progress(InstallStep.bootstrapping.rawValue) }
             if self.waitForXPC(timeout: 12) {
-                progress(InstallStep.verifying.rawValue)
+                DispatchQueue.main.async { progress(InstallStep.verifying.rawValue) }
                 let ok = self.waitForXPC(timeout: 8)
                 DispatchQueue.main.async {
                     progress(InstallStep.done.rawValue)
@@ -115,11 +137,11 @@ final class HelperInstaller {
                 return
             }
 
-            progress(InstallStep.copyingFiles.rawValue)
+            DispatchQueue.main.async { progress(InstallStep.copyingFiles.rawValue) }
             let fallbackResult = self.legacyInstall()
             switch fallbackResult {
             case .success:
-                progress(InstallStep.verifying.rawValue)
+                DispatchQueue.main.async { progress(InstallStep.verifying.rawValue) }
                 let ok = self.waitForXPC(timeout: 20)
                 DispatchQueue.main.async {
                     completion(ok, ok ? "" : "The helper is installed but did not answer over XPC.")
@@ -137,12 +159,12 @@ final class HelperInstaller {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             // Restore normal charging via XPC before tearing down, if we can.
-            _ = DaemonClient.shared.cancelOverridesSync()
+            _ = DaemonXPCClient.shared.cancelOverridesSync()
 
             if let service = self.service {
                 try? service.unregister()
             }
-            progress("Removing the helper files…")
+            DispatchQueue.main.async { progress("Removing the helper files…") }
             let shell = "/bin/launchctl bootout system/\(BatteryXPC.helperBundleID) 2>/dev/null; /bin/rm -f '\(BatteryXPC.launchDaemonPlistPath)' '\(BatteryXPC.helperInstallPath)'"
             let script = "do shell script \"" + escapedForAppleScript(shell) + "\" with administrator privileges"
             let ok = runOsaScript(script)

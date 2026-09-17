@@ -64,7 +64,10 @@ final class AppState: ObservableObject {
 
     init() {
         platform = PlatformDetector.detect()
-        helperStatus = HelperInstaller().currentStatus()
+        // Registration-only status: never blocks the main thread on XPC
+        // (the blocking probe previously stalled launch up to ~3s when the
+        // daemon was absent). The first poll fills in the live state.
+        helperStatus = HelperInstaller().staticStatus(xpcDead: false)
 
         if !self.platform.isSupportedPlatform {
             DaemonAppLog.ui.error("Unsupported platform: \(self.platform.unsupportedReason ?? "unknown")")
@@ -117,17 +120,60 @@ final class AppState: ObservableObject {
 
     // MARK: Polling
 
+    /// Stale-response protection, structural: at most ONE status request is
+    /// ever outstanding. Overlapping polls (10s timer, menu-bar refresh,
+    /// post-command refresh) join the in-flight task instead of issuing a
+    /// competing request, so two responses can never arrive out of order
+    /// and a slower earlier response can never overwrite a newer one.
+    private var inFlightPoll: Task<Void, Never>?
+
+    /// When the last command completed. A status snapshot the daemon built
+    /// BEFORE this instant predates the command's effect and must not be
+    /// presented as the final state (§ command/monitor race).
+    private var lastCommandCompletion: Date?
+
+    /// Bounded one-shot refresh after a stale detection: set while the
+    /// freshness-triggered follow-up request is outstanding so the next
+    /// completion is always applied (never triggers another re-request).
+    private var freshnessRefreshInFlight = false
+
     func poll() {
-        Task {
-            if let response = await DaemonClient.shared.getStatus() {
-                self.snapshot = response.snapshot
-                self.helperStatus = .running
-                if response.daemonVersion != BatteryXPC.expectedHelperVersion {
-                    self.helperStatus = .outdated
-                }
-            } else {
-                self.helperStatus = HelperInstaller().currentStatus()
-            }
+        guard inFlightPoll == nil else { return }
+        inFlightPoll = Task { [weak self] in
+            let response = await DaemonXPCClient.shared.getStatus()
+            guard let self else { return }
+            self.inFlightPoll = nil
+            self.applyStatus(response)
+        }
+    }
+
+    /// Applies one status response. When the daemon could not be reached,
+    /// the last snapshot is CLEARED so stale "verified" state is never
+    /// presented as current — the UI falls back to local IOKit readings and
+    /// an honest unavailable status until the daemon answers again.
+    private func applyStatus(_ response: XPCStatusResponse?) {
+        guard let response else {
+            snapshot = nil
+            // Registration state without an XPC probe (never blocks).
+            helperStatus = HelperInstaller().staticStatus(xpcDead: true)
+            freshnessRefreshInFlight = false
+            return
+        }
+        // Command/monitor race guard: a response the daemon assembled before
+        // the last command completed predates that command's effect. Skip
+        // it and request one guaranteed to be newer — exactly once, so no
+        // refresh loop is possible.
+        if !response.isFresh(afterCommandAt: lastCommandCompletion), !freshnessRefreshInFlight {
+            freshnessRefreshInFlight = true
+            poll()
+            return
+        }
+        freshnessRefreshInFlight = false
+        snapshot = response.snapshot
+        if response.daemonVersion != BatteryXPC.expectedHelperVersion {
+            helperStatus = .outdated
+        } else {
+            helperStatus = .running
         }
     }
 
@@ -171,14 +217,14 @@ final class AppState: ObservableObject {
 
     func apply(policy: ChargingPolicy) {
         Task {
-            let ack = await DaemonClient.shared.applyPolicy(policy)
+            let ack = await DaemonXPCClient.shared.applyPolicy(policy)
             present(ack: ack)
         }
     }
 
     func startForceDischarge(target: Int, floor: Int? = nil, belowFloorConsent: Bool = false) {
         Task {
-            let ack = await DaemonClient.shared.startForceDischarge(
+            let ack = await DaemonXPCClient.shared.startForceDischarge(
                 targetPercent: target,
                 floorPercent: floor ?? ChargingPolicyEngine.minimumDischargeFloor,
                 belowFloorConsent: belowFloorConsent
@@ -189,28 +235,28 @@ final class AppState: ObservableObject {
 
     func startForceCharge(target: Int) {
         Task {
-            let ack = await DaemonClient.shared.startForceCharge(targetPercent: target)
+            let ack = await DaemonXPCClient.shared.startForceCharge(targetPercent: target)
             present(ack: ack)
         }
     }
 
     func cancelOverrides() {
         Task {
-            let ack = await DaemonClient.shared.cancelOverrides()
+            let ack = await DaemonXPCClient.shared.cancelOverrides()
             present(ack: ack)
         }
     }
 
     func beginCalibration() {
         Task {
-            let ack = await DaemonClient.shared.beginCalibration()
+            let ack = await DaemonXPCClient.shared.beginCalibration()
             present(ack: ack)
         }
     }
 
     func cancelCalibration() {
         Task {
-            let ack = await DaemonClient.shared.cancelCalibration()
+            let ack = await DaemonXPCClient.shared.cancelCalibration()
             present(ack: ack)
         }
     }
@@ -219,6 +265,10 @@ final class AppState: ObservableObject {
     private func present(ack: OperationAck?) {
         lastAck = ack
         lastAckMessage = ack?.message ?? "The helper did not respond. Try Repair Helper in Settings."
+        // Record completion BEFORE the follow-up poll: any snapshot the
+        // daemon built before this instant is pre-command and will be
+        // skipped in favor of a fresh one (§ command/monitor race).
+        lastCommandCompletion = Date()
         poll()
     }
 }

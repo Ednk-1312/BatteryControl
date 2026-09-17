@@ -168,7 +168,7 @@ struct DiagnosticsView: View {
             Section {
                 Button("Run Diagnostics") {
                     Task {
-                        report = await DaemonClient.shared.runDiagnostics()
+                        report = await DaemonXPCClient.shared.runDiagnostics()
                     }
                 }
                 .buttonStyle(.borderedProminent)

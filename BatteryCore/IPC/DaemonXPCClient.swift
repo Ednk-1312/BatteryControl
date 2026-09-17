@@ -18,25 +18,58 @@ public final class DaemonXPCClient: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.batterycontrol.client.xpc")
     private var connection: NSXPCConnection?
 
+    /// Guards `connection` against the `invalidationHandler`, which runs on
+    /// an XPC-internal queue — it must neither race the serial-queue access
+    /// nor deadlock against it (invalidation can fire synchronously inside
+    /// `remoteObjectProxyWithErrorHandler` during connection teardown).
+    private let connectionLock = NSLock()
+
     public init() {}
 
     private func remoteObject() -> BatteryDaemonProtocol? {
         let current: NSXPCConnection
+        connectionLock.lock()
         if let connection {
             current = connection
+            connectionLock.unlock()
         } else {
-            current = NSXPCConnection(machServiceName: BatteryXPC.machServiceName, options: [])
-            current.remoteObjectInterface = NSXPCInterface(with: BatteryDaemonProtocol.self)
-            current.invalidationHandler = { [weak self] in
-                self?.connection = nil
+            connectionLock.unlock()
+            let fresh = NSXPCConnection(machServiceName: BatteryXPC.machServiceName, options: [])
+            fresh.remoteObjectInterface = NSXPCInterface(with: BatteryDaemonProtocol.self)
+            fresh.invalidationHandler = { [weak self] in
+                // Never touch `queue` here: invalidation can arrive while a
+                // queue block is mid-teardown, and the handler must not
+                // deadlock waiting for it. `connectionLock` is a different,
+                // never-held-across-XPC-calls lock, so clearing here stays
+                // race-free without deadlock risk.
+                self?.setConnection(nil)
             }
-            current.resume()
-            connection = current
+            fresh.resume()
+            connectionLock.lock()
+            if connection == nil {
+                connection = fresh
+                connectionLock.unlock()
+                current = fresh
+            } else {
+                // Another caller won the create race; retire ours. The
+                // handler is cleared first so this teardown cannot clear
+                // the winner's stored connection.
+                fresh.invalidationHandler = nil
+                fresh.invalidate()
+                current = connection!
+                connectionLock.unlock()
+            }
         }
         return current.remoteObjectProxyWithErrorHandler { error in
             Logger(subsystem: "com.batterycontrol", category: "ipc")
                 .error("XPC error: \(error.localizedDescription)")
         } as? BatteryDaemonProtocol
+    }
+
+    private func setConnection(_ new: NSXPCConnection?) {
+        connectionLock.lock()
+        connection = new
+        connectionLock.unlock()
     }
 
     // MARK: - Timeout guard
@@ -226,6 +259,64 @@ public final class DaemonXPCClient: @unchecked Sendable {
                     ))
                 }
             }
+        }
+    }
+
+    // MARK: - Synchronous helpers (installer / teardown paths)
+
+    /// Blocking status probe with a bounded wait. Never blocks longer than
+    /// `timeout`; returns false when the daemon did not answer in time.
+    /// Call only from a background queue — this waits on the caller thread.
+    public func pingSync(timeout: TimeInterval = 3) -> Bool {
+        let state = SyncWaitBox()
+        queue.async { [weak self] in
+            guard let self, let proxy = self.remoteObject() else {
+                state.signal(false)
+                return
+            }
+            proxy.getStatus { _ in state.signal(true) }
+        }
+        return state.wait(seconds: timeout)
+    }
+
+    /// Best-effort blocking override cancellation used before helper
+    /// uninstall. True when the daemon answered at all (even with a
+    /// rejection); false means the restore could not be confirmed and the
+    /// uninstall flow reports that honestly.
+    public func cancelOverridesSync(timeout: TimeInterval = 3) -> Bool {
+        let state = SyncWaitBox()
+        queue.async { [weak self] in
+            guard let self, let proxy = self.remoteObject() else {
+                state.signal(false)
+                return
+            }
+            proxy.cancelOverrides { _ in state.signal(true) }
+        }
+        return state.wait(seconds: timeout)
+    }
+
+    /// One-shot bounded wait for a background operation. `wait` returns true
+    /// only when signaled SUCCESSFULLY within the timeout; a timed-out wait
+    /// returns false even if the signal lands a moment later (conservative,
+    /// honest false rather than an unconfirmed true).
+    private final class SyncWaitBox: @unchecked Sendable {
+        private let semaphore = DispatchSemaphore(value: 0)
+        private let lock = NSLock()
+        private var success = false
+
+        func signal(_ ok: Bool) {
+            lock.lock()
+            success = ok
+            lock.unlock()
+            semaphore.signal()
+        }
+
+        func wait(seconds: TimeInterval) -> Bool {
+            let signaled = semaphore.wait(timeout: .now() + seconds) == .success
+            lock.lock()
+            let ok = success
+            lock.unlock()
+            return signaled && ok
         }
     }
 
