@@ -15,6 +15,10 @@ final class MenuBarController {
     private var statusItem: NSStatusItem?
     private var appState: AppState?
     private var cancellable: AnyCancellable?
+    /// Last menu content the status bar was given. Rebuilding the NSMenu on
+    /// every identical snapshot (10s polls) allocated and invalidated menu
+    /// items for nothing; equal content now reuses the existing menu.
+    private var lastMenuKey: String?
 
     func start(appState: AppState) {
         self.appState = appState
@@ -54,8 +58,34 @@ final class MenuBarController {
     }
 
     private func refreshMenu() {
+        let key = menuContentKey()
+        guard key != lastMenuKey else { return }
+        lastMenuKey = key
         statusItem?.menu = buildMenu()
         updateIcon()
+    }
+
+    /// Everything the menu displays, as a cheap comparable key. The key is
+    /// intentionally the SOURCE data (not rendered text) so wording changes
+    /// in DashboardSummary still flow through.
+    private func menuContentKey() -> String {
+        guard let snapshot = appState?.snapshot else { return "no-snapshot" }
+        let icon: String
+        if snapshot.isForceDischarging {
+            icon = "bolt.slash.fill"
+        } else if snapshot.activePolicy.mode != .passthrough {
+            icon = snapshot.readings.isCharging ? "bolt.badge.a.fill" : "battery.75percent"
+        } else {
+            icon = "bolt.fill"
+        }
+        return [
+            String(snapshot.readings.percentage),
+            snapshot.readings.isExternalConnected ? "ac" : "bat",
+            appState?.controlSummary ?? "",
+            DashboardSummary.controlStatus(snapshot: snapshot, isSupportedPlatform: true),
+            icon,
+            appState?.needsSetup == true ? "setup" : "",
+        ].joined(separator: "|")
     }
 
     private func updateIcon() {
@@ -72,8 +102,14 @@ final class MenuBarController {
         } else {
             symbol = "bolt.fill"
         }
+        // Recreating the NSImage for an unchanged symbol allocates for
+        // nothing; only swap when the glyph actually changes.
+        guard symbol != lastIconSymbol else { return }
+        lastIconSymbol = symbol
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: "BatteryControl")
     }
+
+    private var lastIconSymbol: String?
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()

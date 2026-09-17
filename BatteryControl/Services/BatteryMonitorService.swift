@@ -23,6 +23,10 @@ final class BatteryMonitorService: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let reading = PlatformDetector.readBatteryFromIOKit()
             DispatchQueue.main.async {
+                // Equal readings are the common case on an idle machine;
+                // skip the publish instead of invalidating SwiftUI views
+                // every 15 seconds for identical data.
+                guard self?.readings != reading else { return }
                 self?.readings = reading
             }
         }
@@ -172,11 +176,16 @@ final class AppState: ObservableObject {
             return
         }
         freshnessRefreshInFlight = false
-        snapshot = response.snapshot
-        if response.daemonVersion != BatteryXPC.expectedHelperVersion {
-            helperStatus = .outdated
-        } else {
-            helperStatus = .running
+        // Only publish real changes: assigning an equal value to @Published
+        // still fires objectWillChange, so an idle machine would invalidate
+        // every SwiftUI view every poll forever. Equal snapshots are the
+        // common case; skipping them makes idle GUI cost ~zero.
+        if snapshot != response.snapshot {
+            snapshot = response.snapshot
+        }
+        let nextHelperStatus: HelperStatus = response.daemonVersion != BatteryXPC.expectedHelperVersion ? .outdated : .running
+        if helperStatus != nextHelperStatus {
+            helperStatus = nextHelperStatus
         }
     }
 

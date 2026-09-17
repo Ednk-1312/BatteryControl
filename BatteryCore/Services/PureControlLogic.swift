@@ -180,6 +180,48 @@ public enum VerificationLogic {
 /// Pure helper for the daemon's recovery heuristics.
 public enum RecoveryDecisions {
 
+    /// Should the engine reconfigure the firmware-limit backend this tick?
+    ///
+    /// Reconfiguration is a hardware operation (3 SMC reads; writes only if
+    /// state differs). When the controlling context is unchanged AND the
+    /// last configuration was hardware-verified, re-doing it every 20s tick
+    /// adds no enforcement — the SMC itself holds the state, and a periodic
+    /// re-confirm (every `reassertIntervalSeconds`) catches hardware drift.
+    /// This decision is the gate: reconfigure on any context change or
+    /// unverified state, otherwise only when the confirm interval elapsed.
+    ///
+    /// Safety equivalence: unverified, override/calibration transitions,
+    /// and policy changes always reconfigure; nothing that would previously
+    /// write is skipped — only redundant READ-confirmed maintenance is
+    /// spaced out. `configure()` still read-verifies before every write.
+    public static func shouldReconfigureFirmwareLimit(
+        policy: ChargingPolicy,
+        override: PolicyOverride,
+        calibrationActive: Bool,
+        lastContext: FirmwareMaintContext?,
+        lastConfirmedAt: Date?,
+        confirmed: Bool,
+        now: Date,
+        confirmInterval: TimeInterval,
+        forceReconfigure: Bool = false
+    ) -> Bool {
+        // User/recovery events (explicit command, wake, boot recovery) always
+        // reconfigure: the user (or a lifecycle event) is asking for the
+        // hardware state to be (re)established and verified right now.
+        if forceReconfigure { return true }
+        // No valid memo (never configured, or invalidated after a failure):
+        // hardware state cannot be attributed to the CURRENT policy, so it
+        // must be reconfigured even if a confirm timestamp exists.
+        guard let lastContext else { return true }
+        let contextChanged = lastContext.policy != policy
+            || lastContext.override != override
+            || lastContext.calibrationActive != calibrationActive
+        if contextChanged { return true }
+        if !confirmed { return true }
+        guard let lastConfirmedAt else { return true }
+        return now.timeIntervalSince(lastConfirmedAt) >= confirmInterval
+    }
+
     /// Should a policy re-apply be attempted after the given transition?
     public static func shouldReapplyAfterWake(
         readings: BatteryReadings,

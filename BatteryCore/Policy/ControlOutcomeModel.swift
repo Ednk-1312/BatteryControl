@@ -15,6 +15,26 @@ public enum ControlRequestReason: String, Codable, Sendable {
 
 /// The outcome of one control attempt. Verification is mandatory: an action
 /// is never reported as applied unless the resulting state was confirmed.
+/// The policy context that produced the last firmware-limit configuration.
+/// Compared (Equatable) each tick so an unchanged context with a verified
+/// state skips redundant hardware maintenance; any change reconfigures.
+/// Deliberately no timestamps — only the semantic inputs of configure().
+public struct FirmwareMaintContext: Codable, Equatable, Sendable {
+    public var policy: ChargingPolicy
+    public var override: PolicyOverride
+    public var calibrationActive: Bool
+
+    public init(
+        policy: ChargingPolicy,
+        override: PolicyOverride,
+        calibrationActive: Bool
+    ) {
+        self.policy = policy
+        self.override = override
+        self.calibrationActive = calibrationActive
+    }
+}
+
 public struct ControlAttemptResult: Codable, Equatable, Sendable {
     public var action: ChargingAction
     public var backendID: String

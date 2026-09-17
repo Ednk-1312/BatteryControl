@@ -25,6 +25,14 @@ final class ControlEngine {
     /// (active → ended) triggers a restore of the user's firmware limit.
     private var calibrationWasActive = false
 
+    /// Memo for steady-state firmware-limit maintenance: the policy context
+    /// of the last successful hardware-verified configure() and when it was
+    /// confirmed. Lets unchanged ticks skip redundant SMC read-triples while
+    /// a periodic re-confirm (reassertIntervalSeconds) keeps proving drift
+    /// hasn't occurred. Invalidated on any failure or context change.
+    private var lastFirmwareContext: FirmwareMaintContext?
+    private var lastFirmwareConfirmAt: Date?
+
     /// Firmware compatibility tier for this exact machine/firmware build,
     /// classified from the runtime-detected SMC family + profile library.
     private(set) var firmwareProfileTier: FirmwareProfileTier = .untested
@@ -286,23 +294,58 @@ final class ControlEngine {
         desiredAction = action
 
         // Composite backends (firmware-managed limit) maintain persistent
-        // hardware state from policy context — drive them every tick.
+        // hardware state from policy context. Reconfiguring every tick is
+        // redundant when the context is unchanged and the hardware was just
+        // verified: the SMC holds the state, and the periodic re-confirm
+        // below catches drift. Decision logic is in BatteryCore (unit-
+        // tested); the SMC itself still read-verifies before any write.
+        let context = FirmwareMaintContext(
+            policy: state.policy,
+            override: override,
+            calibrationActive: calibrationActive
+        )
+        let now = Date()
+        let shouldReconfigure = RecoveryDecisions.shouldReconfigureFirmwareLimit(
+            policy: state.policy,
+            override: override,
+            calibrationActive: calibrationActive,
+            lastContext: lastFirmwareContext,
+            lastConfirmedAt: lastFirmwareConfirmAt,
+            confirmed: controlIsVerified,
+            now: now,
+            confirmInterval: RecoveryDecisions.reassertIntervalSeconds,
+            forceReconfigure: reason != .policyTick && reason != .calibration
+        )
         if let configurable = activeBackend as? ChargingPolicyConfigurable {
-            let result = configurable.configure(
-                policy: state.policy,
-                override: override,
-                calibrationActive: calibrationActive
-            )
-            if case .failure(let error) = result {
-                controlIsVerified = false
-                record(errorText: "Firmware-limit maintenance failed: \(error.message)", attempt: ControlAttemptResult(
-                    action: action,
-                    backendID: activeBackend.id.rawValue,
-                    verified: false,
-                    verificationDetail: "configure() failed",
-                    errorText: error.message,
-                    attemptNumber: attemptNumber
-                ))
+            if shouldReconfigure {
+                let result = configurable.configure(
+                    policy: state.policy,
+                    override: override,
+                    calibrationActive: calibrationActive
+                )
+                switch result {
+                case .success:
+                    // configure() returning success means it confirmed the
+                    // programmed state by SMC readback (it read-verifies
+                    // internally). The periodic re-confirm keeps that proof
+                    // fresh without per-tick hardware traffic.
+                    lastFirmwareContext = context
+                    lastFirmwareConfirmAt = now
+                case .failure(let error):
+                    // Invalidate the memo: a failed configure must not be
+                    // treated as confirmed; retry next tick.
+                    lastFirmwareContext = nil
+                    lastFirmwareConfirmAt = nil
+                    controlIsVerified = false
+                    record(errorText: "Firmware-limit maintenance failed: \(error.message)", attempt: ControlAttemptResult(
+                        action: action,
+                        backendID: activeBackend.id.rawValue,
+                        verified: false,
+                        verificationDetail: "configure() failed",
+                        errorText: error.message,
+                        attemptNumber: attemptNumber
+                    ))
+                }
             }
         }
 
@@ -317,6 +360,8 @@ final class ControlEngine {
                 )
             }
             controlIsVerified = false
+            lastFirmwareContext = nil
+            lastFirmwareConfirmAt = nil
         }
         calibrationWasActive = calibrationActive
 

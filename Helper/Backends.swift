@@ -359,14 +359,19 @@ final class FirmwareLimitBackend: ChargingBackend, ChargingPolicyConfigurable {
         // Readback of current state (also proves the keys are live).
         switch readState() {
         case .success(let current):
+            if current.active, current.upperPercent == UInt32(upper), current.lowerPercent == UInt32(lower) {
+                // Already in the requested state: nothing to write and
+                // nothing worth logging every 20s — the periodic re-confirm
+                // path reports hardware state on its own bounded cadence.
+                return .success(())
+            }
+            // A write WILL happen: record the prior state once, at the
+            // moment it matters (not on every unchanged tick).
             DaemonLog.info(
                 "Firmware limit before write: active=\(current.active) upper=\(current.upperPercent) lower=\(current.lowerPercent)",
                 operation: "apply",
                 backend: id.rawValue
             )
-            if current.active, current.upperPercent == UInt32(upper), current.lowerPercent == UInt32(lower) {
-                return .success(()) // already in the requested state
-            }
         case .failure(let err):
             return .failure(err)
         }
