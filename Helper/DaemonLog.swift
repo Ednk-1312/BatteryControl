@@ -17,14 +17,26 @@ enum DaemonLog {
     static func bootstrap() {
         queue.sync {
             let path = BatteryXPC.helperLogPath
+            // Bound growth: rotate (truncate) past 5 MB so a long-lived
+            // install cannot grow the log indefinitely across restarts.
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+               let size = attrs[.size] as? UInt64, size > 5_000_000 {
+                try? FileManager.default.removeItem(atPath: path)
+            }
             if !FileManager.default.fileExists(atPath: path) {
                 FileManager.default.createFile(atPath: path, contents: nil, attributes: [
                     .posixPermissions: 0o644,
                 ])
             }
             fileHandle = FileHandle(forUpdatingAtPath: path)
+            // Open at END of file: without this, FileHandle(forUpdating:)
+            // starts at offset 0 and every daemon restart OVERWRITES the
+            // log from the top, while tail (and readers watching for new
+            // bytes at the old EOF) keep showing stale remnants — making a
+            // healthy restart look like a daemon that "never logged".
+            fileHandle?.seekToEndOfFile()
         }
-    }
+}
 
     static func info(_ message: String, operation: String, backend: String? = nil) {
         log(.info, message, operation: operation, backend: backend)
