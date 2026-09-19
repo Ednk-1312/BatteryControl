@@ -22,7 +22,7 @@ the hardware work; the app and CLI just talk to it.
 
 ## Features
 
-| Feature | What it does | Honest limitations |
+| Feature | What it does | Caveats |
 |---|---|---|
 | Fixed Charge Limit | "Set my Mac to 80%" — presets (60/70/80/90/100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
 | Lower limit | Charging resumes only after the battery falls to it (hysteresis) | — |
@@ -185,7 +185,7 @@ There's a small compatibility database of hardware profiles behind that:
 | Untested | Unknown key signature. Read-only diagnostics, no control writes |
 | Unsupported | Outside the platform gate, or no usable mechanism |
 
-Where things stand today, honestly:
+Where things stand:
 
 - **Physically tested: one machine.** My M3 MacBook Air (Mac15,13), mBoot-20457.1.29,
   macOS 15.8 (24H23). The firmware-managed limit and CHIE discharge both work on it,
