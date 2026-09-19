@@ -1,5 +1,9 @@
 # BatteryControl
 
+<p align="center">
+  <img src="BatteryControl/Assets.xcassets/AppIcon.appiconset/icon_256x256@2x.png" width="128" alt="BatteryControl app icon" />
+</p>
+
 I wanted my MacBook Air to stop sitting at 100% all day, and the existing charge-limit
 tools kept failing on my M3. So I wrote my own. BatteryControl lets you set a charge
 limit on Apple Silicon Macs and actually holds it — while the app is closed, the
