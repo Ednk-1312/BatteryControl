@@ -35,7 +35,7 @@ public enum BatteryXPC {
     /// protocol or control logic changes incompatibly; a mismatch is reported
     /// as `HelperStatus.outdated` and offers the repair flow. Kept in sync
     /// with the release artifact version (`scripts/build-release.sh <ver>`).
-    public static let expectedHelperVersion = "1.0.1"
+    public static let expectedHelperVersion = "1.0.0"
 }
 
 /// Root XPC message envelope. One struct per operation keeps the protocol
