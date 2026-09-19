@@ -49,6 +49,18 @@ struct DischargeControlsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section("About the safety floor") {
+                Text("The safety floor is a stop line, not a wall. While a discharge is running, BatteryControl checks the battery every \(Int(RecoveryDecisions.tickIntervalSeconds)) seconds and keeps discharging only while the charge is above the floor. The moment a check reads the floor value or lower, the session ends by itself: the adapter is released, the Mac goes back to charging normally, and BatteryControl returns to whatever charge limit you had set — no confirmation needed and nothing left to turn off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Two things are worth knowing. First, \"the moment\" means the next check, not instantly — the battery can drift a little below the floor between checks (usually 1–2%, never far, since the check runs every \(Int(RecoveryDecisions.tickIntervalSeconds)) seconds). Second, below \(ChargingPolicyEngine.minimumDischargeFloor)% macOS starts clipping the reported charge and the gauge gets less accurate, so a displayed 12% is an estimate. The absolute floor BatteryControl will ever program is \(ChargingPolicyEngine.absoluteDischargeFloor)%; macOS shuts the Mac down on its own before 0%.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("The floor also protects you when no discharge is running: with the floor removed, the discharge target slider extends below \(ChargingPolicyEngine.minimumDischargeFloor)%, but every hardware write is still checked against the floor by the daemon itself — the app cannot send a value the daemon would refuse.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
         .navigationTitle("Discharge")
@@ -57,7 +69,7 @@ struct DischargeControlsView: View {
             isPresented: $showConsentDialog,
             titleVisibility: .visible
         ) {
-            Button("Remove safety floor and allow discharge to \(Int(targetPercent))%", role: .destructive) {
+            Button("Remove Safety Floor", role: .destructive) {
                 // Consent confirmed; keep the switch on.
                 belowFloorEnabled = true
                 clampTargetToRange()
