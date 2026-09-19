@@ -1,20 +1,69 @@
-# Xcode
-DerivedData/
+# ---- macOS metadata ----
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# ---- Xcode ----
 build/
+DerivedData/
 *.xcuserstate
 xcuserdata/
 *.xcuserdatad/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+*.xcresult
+*.hmap
+Index/
+# Note: xcshareddata/ (shared schemes) stays tracked.
 
-# Swift Package Manager
+# ---- Swift Package Manager ----
 .build/
 .swiftpm/
 Package.resolved
+Package.pins
 
-# macOS
-.DS_Store
-default.profraw
-
-# Freebuff
-.freebuff/
-BatteryControl-*.pkg
+# ---- Build / distribution artifacts ----
+*.pkg
+*.zip
+*.dmg
+*.ipa
+*.xcarchive
+*.dSYM
+*.dSYM.zip
 dist/
+
+# ---- Logs / coverage ----
+*.log
+default.profraw
+*.profdata
+*.profraw
+
+# ---- Credentials / signing materials (never commit) ----
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+*.mobileprovision
+*.provisionprofile
+.env
+.env.*
+.netrc
+credentials*.json
+secrets*.json
+
+# ---- Editors ----
+.vscode/
+.idea/
+*.swp
+
+# ---- Agent state ----
+.freebuff/
