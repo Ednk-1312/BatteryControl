@@ -184,7 +184,7 @@ public enum BatteryControlCLI {
     // MARK: - Help
 
     public static let helpText: String = """
-    BatteryControl — charge control for Apple Silicon Macs (M1–M4, macOS 14/15/26/27)
+    BatteryControl — charge control for Apple Silicon Macs (M1–M5, macOS 14/15/26/27)
 
     USAGE: batterycontrol <command> [arguments]
 

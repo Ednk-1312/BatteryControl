@@ -2,16 +2,19 @@ import Foundation
 
 /// Apple Silicon chip generations BatteryControl recognizes.
 ///
-/// M1–M4 are the admitted hardware range. M5 is parsed (so the app can
-/// name it precisely when refusing it); Intel is out of scope entirely.
+/// M1–M5 are the admitted hardware range. Intel is out of scope entirely.
 /// Hardware admission is necessary but not sufficient: what BatteryControl
 /// can actually control is decided at runtime by SMC probing and the
-/// firmware compatibility database — never by chip alone.
+/// firmware compatibility database — never by chip alone. An M5 Mac with
+/// the same SMC key signature as a verified M3 profile is treated the
+/// same way (capability tier, per-write verification); an M5 Mac with an
+/// unknown signature gets read-only diagnostics like any other machine.
 public enum ChipGeneration: String, Codable, Sendable, CaseIterable, Comparable {
     case m1 = "Apple M1"
     case m2 = "Apple M2"
     case m3 = "Apple M3"
     case m4 = "Apple M4"
+    case m5 = "Apple M5"
 
     /// Order used for comparisons ("newer than" checks).
     private var rank: Int {
@@ -20,6 +23,7 @@ public enum ChipGeneration: String, Codable, Sendable, CaseIterable, Comparable 
         case .m2: return 2
         case .m3: return 3
         case .m4: return 4
+        case .m5: return 5
         }
     }
 
@@ -79,16 +83,16 @@ public struct PlatformIdentity: Codable, Equatable, Sendable {
     public static let supportedOSMajors: [Int] = [14, 15, 26, 27]
 
     public static let unsupportedMessage =
-        "BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27."
+        "BatteryControl supports Apple Silicon Macs from M1 through M5 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27."
 
-    /// The platform gate: Apple Silicon M1–M4 on macOS 14, 15, 26, or 27.
+    /// The platform gate: Apple Silicon M1–M5 on macOS 14, 15, 26, or 27.
     ///
     /// Admission only allows the daemon to probe the machine's actual SMC
-    /// capabilities. Control is never granted by OS version alone — an
-    /// admitted machine with no recognizable mechanism stays read-only.
+    /// capabilities. Control is never granted by chip or OS version alone —
+    /// an admitted machine with no recognizable mechanism stays read-only.
     public var isSupportedPlatform: Bool {
         guard isAppleSilicon, let chip = chipGeneration else { return false }
-        guard (ChipGeneration.m1...ChipGeneration.m4).contains(chip) else { return false }
+        guard (ChipGeneration.m1...ChipGeneration.m5).contains(chip) else { return false }
         return Self.supportedOSMajors.contains(osMajor)
     }
 
@@ -100,9 +104,6 @@ public struct PlatformIdentity: Codable, Equatable, Sendable {
         }
         guard let chip = chipGeneration else {
             return "This Mac's chip could not be identified. \(Self.unsupportedMessage)"
-        }
-        if chip > .m4 {
-            return "This Mac uses \(chip.rawValue), which is newer than the supported hardware range. \(Self.unsupportedMessage)"
         }
         if chip < .m1 {
             return "\(Self.unsupportedMessage)"

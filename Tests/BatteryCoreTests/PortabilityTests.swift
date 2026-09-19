@@ -87,7 +87,7 @@ final class PortabilityTests: XCTestCase {
 
     /// Every supported Apple Silicon generation — selection decisions must
     /// be identical for all of them given equal capabilities.
-    private static let allChips: [ChipGeneration] = [.m1, .m2, .m3, .m4]
+    private static let allChips: [ChipGeneration] = [.m1, .m2, .m3, .m4, .m5]
 
     private func identity(chip: ChipGeneration, model: String, firmware: String?) -> PlatformIdentity {
         PlatformIdentity(

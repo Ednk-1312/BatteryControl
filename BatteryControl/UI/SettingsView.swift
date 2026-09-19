@@ -56,7 +56,7 @@ struct SettingsView: View {
 
             Section("About") {
                 LabeledContent("Version", value: appVersion)
-                LabeledContent("Scope", value: "Apple Silicon M1–M4 · macOS 14/15/26/27")
+                LabeledContent("Scope", value: "Apple Silicon M1–M5 · macOS 14/15/26/27")
                 if let tier = appState.snapshot?.firmwareProfileTier {
                     LabeledContent("This Mac", value: tierHeadline(tier))
                     Text(DashboardSummary.compatibilityLine(tier: tier))

@@ -29,15 +29,27 @@ final class PlatformGateTests: XCTestCase {
     // MARK: Platform gate
 
     func testAllSupportedChipsOnMacOS15AreSupported() {
-        for chip in [ChipGeneration.m1, .m2, .m3, .m4] {
+        for chip in [ChipGeneration.m1, .m2, .m3, .m4, .m5] {
             let id = identity(chip: chip)
             XCTAssertTrue(id.isSupportedPlatform, "\(chip.rawValue) on macOS 15 should be supported")
             XCTAssertNil(id.unsupportedReason)
         }
     }
 
+    func testM5IsAdmittedOnAllSupportedOSVersions() {
+        // M5 is admitted like any other chip: capability, not generation,
+        // decides what it can do. There is no physical M5 machine in the
+        // project's evidence set, so it can only ever classify at
+        // compatibleByCapability — never verified without evidence.
+        for (major, minor) in [(14, 7), (15, 8), (26, 4), (27, 0)] {
+            let id = identity(chip: .m5, osMajor: major, osMinor: minor)
+            XCTAssertTrue(id.isSupportedPlatform, "M5 on macOS \(major) should be admitted")
+            XCTAssertNil(id.unsupportedReason)
+        }
+    }
+
     func testAllSupportedChipsOnMacOS14AreAdmitted() {
-        for chip in [ChipGeneration.m1, .m2, .m3, .m4] {
+        for chip in [ChipGeneration.m1, .m2, .m3, .m4, .m5] {
             let id = identity(chip: chip, osMajor: 14, osMinor: 7)
             XCTAssertTrue(id.isSupportedPlatform, "\(chip.rawValue) on macOS 14 should be admitted")
             XCTAssertNil(id.unsupportedReason)
@@ -45,7 +57,7 @@ final class PlatformGateTests: XCTestCase {
     }
 
     func testAllSupportedChipsOnMacOS26AreAdmitted() {
-        for chip in [ChipGeneration.m1, .m2, .m3, .m4] {
+        for chip in [ChipGeneration.m1, .m2, .m3, .m4, .m5] {
             let id = identity(chip: chip, osMajor: 26, osMinor: 4)
             XCTAssertTrue(id.isSupportedPlatform, "\(chip.rawValue) on macOS 26 should be admitted")
             XCTAssertNil(id.unsupportedReason)
@@ -53,7 +65,7 @@ final class PlatformGateTests: XCTestCase {
     }
 
     func testAllSupportedChipsOnMacOS27AreAdmitted() {
-        for chip in [ChipGeneration.m1, .m2, .m3, .m4] {
+        for chip in [ChipGeneration.m1, .m2, .m3, .m4, .m5] {
             let id = identity(chip: chip, osMajor: 27, osMinor: 0)
             XCTAssertTrue(id.isSupportedPlatform, "\(chip.rawValue) on macOS 27 should be admitted")
             XCTAssertNil(id.unsupportedReason)
@@ -99,9 +111,10 @@ final class PlatformGateTests: XCTestCase {
         XCTAssertTrue((id.unsupportedReason ?? "").contains("outside the supported OS range"))
     }
 
-    func testM5OnMacOS15IsOutOfRange() {
-        // There is no real M5+macOS15 machine, but the gate must still reject
-        // anything outside M1...M4 defensively.
+    func testUnidentifiableChipIsUnsupported() {
+        // An Apple Silicon Mac whose chip cannot be identified is refused
+        // (conservative); the gate must also reject anything outside
+        // M1...M5 defensively.
         var id = identity(chip: nil, silicon: true)
         id.chipGeneration = nil
         XCTAssertFalse(id.isSupportedPlatform)
@@ -110,7 +123,7 @@ final class PlatformGateTests: XCTestCase {
     func testUnsupportedMessageMatchesSpec() {
         XCTAssertEqual(
             PlatformIdentity.unsupportedMessage,
-            "BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27."
+            "BatteryControl supports Apple Silicon Macs from M1 through M5 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27."
         )
     }
 
@@ -119,6 +132,8 @@ final class PlatformGateTests: XCTestCase {
         XCTAssertEqual(ChipGeneration.parse(fromRawString: "Apple M3 Max"), .m3)
         XCTAssertEqual(ChipGeneration.parse(fromRawString: "Apple M1"), .m1)
         XCTAssertEqual(ChipGeneration.parse(fromRawString: "Apple M4"), .m4)
+        XCTAssertEqual(ChipGeneration.parse(fromRawString: "Apple M5"), .m5)
+        XCTAssertEqual(ChipGeneration.parse(fromRawString: "Apple M5 Pro"), .m5)
         XCTAssertNil(ChipGeneration.parse(fromRawString: "Intel Core i9"))
         XCTAssertNil(ChipGeneration.parse(fromRawString: ""))
     }

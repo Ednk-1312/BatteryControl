@@ -36,17 +36,19 @@ the hardware work; the app and CLI just talk to it.
 
 ## Supported Macs
 
-- Apple Silicon M1, M2, M3, M4 (Pro/Max/Ultra included)
+- Apple Silicon M1, M2, M3, M4, M5 (Pro/Max/Ultra included)
 - macOS 14 Sonoma, 15 Sequoia, 26 Tahoe, or 27
 
-Intel Macs, M5-generation Macs, macOS 13 or earlier, and macOS 28 or newer are out of
-scope. The app checks at startup and refuses to touch battery hardware outside that
-range — it shows this instead:
+Intel Macs, macOS 13 or earlier, and macOS 28 or newer are out of scope. The app checks
+at startup and refuses to touch battery hardware outside that range — it shows this
+instead:
 
-> BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27.
+> BatteryControl supports Apple Silicon Macs from M1 through M5 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27.
 
-(M5-generation Macs are outside the hardware range this project has any evidence for.
-macOS 14 support may be refined as machines become available to test on.)
+Chip generation is admission, not capability — an M5 Mac is treated exactly like any
+other machine: runtime probing decides what it can do, and nothing is claimed as
+verified without evidence. (macOS 14 support may be refined as machines become
+available to test on.)
 
 **One important distinction:** a supported OS version gets you in the door — nothing
 more. What BatteryControl can actually control is decided at runtime by probing which
@@ -208,15 +210,15 @@ Where things stand:
   firmware, or older-firmware Macs with the CH0B/CH0C/CH0I keys. Those get control with
   per-write verification. If the hardware doesn't honor a write, the app says so
   instead of claiming success.
-- **Doesn't claim to work:** everything else, whichever OS it's running. It runs, it
-  diagnoses, it stays read-only until there's evidence. There are portability and
-  capability tests in the suite, but those prove the software decides correctly — they
-  are not a substitute for testing real hardware.
-- **OS versions beyond 15 are admitted but unverified.** The classification logic is
-  OS-agnostic and tested for macOS 14/26/27, and the per-write verification is exactly
-  the same on every OS. But no macOS 14, 26, or 27 machine has physically run
-  BatteryControl yet — treat those as capability-tested only until someone actually
-  does.
+- **Doesn't claim to work:** everything else, whichever OS or chip it's running. It
+  runs, it diagnoses, it stays read-only until there's evidence. There are portability
+  and capability tests in the suite, but those prove the software decides correctly —
+  they are not a substitute for testing real hardware.
+- **OS versions beyond 15 and M5-generation Macs are admitted but unverified.** The
+  classification logic is OS- and chip-agnostic and is tested for macOS 14/26/27 and
+  M5, and the per-write verification is exactly the same everywhere. But no macOS
+  14/26/27 machine and no M5 Mac has physically run BatteryControl yet — treat those
+  as capability-tested only until someone actually does.
 
 You can check what your Mac got: `batterycontrol compatibility`, or the Diagnostics page.
 
