@@ -193,7 +193,25 @@ struct ChargingSettingsView: View {
             Text("BatteryControl maintains the band around your limit using the battery's own management controller where available, so it holds during sleep and with the app closed. Every action is verified against the battery's actual state before it is reported as active — the dashboard never shows a limit that is not really enforced.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let note = ownershipNote {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    /// Who is authoritative for charge limiting right now, explained in
+    /// plain language. On macOS 26.4+ Apple ships its own Charge Limit
+    /// (80–100%); when no BatteryControl policy is set and the native
+    /// feature is engaged, say so instead of implying BatteryControl is
+    /// doing anything. Never a control decision — purely explanatory.
+    private var ownershipNote: String? {
+        guard let snapshot = appState.snapshot, let native = snapshot.nativeChargeLimit else {
+            return nil
+        }
+        let owner = OwnershipDecisions.owner(policyMode: snapshot.activePolicy.mode, native: native)
+        return OwnershipDecisions.explanation(owner: owner, native: native, policyMode: snapshot.activePolicy.mode)
     }
 
     private var resumeRange: ClosedRange<Int> {

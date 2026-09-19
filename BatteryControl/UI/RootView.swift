@@ -118,7 +118,7 @@ struct UnsupportedView: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 44))
                 .foregroundStyle(.orange)
-            Text("BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 15 Sequoia.")
+            Text(PlatformIdentity.unsupportedMessage)
                 .font(.title3)
                 .multilineTextAlignment(.center)
             Text(appState.platform.unsupportedReason ?? "")

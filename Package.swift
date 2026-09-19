@@ -7,7 +7,7 @@ import PackageDescription
 
 let package = Package(
     name: "BatteryCore",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v14)],
     products: [
         .library(name: "BatteryCore", targets: ["BatteryCore"]),
         .executable(name: "batterycontrol", targets: ["batterycontrol"]),

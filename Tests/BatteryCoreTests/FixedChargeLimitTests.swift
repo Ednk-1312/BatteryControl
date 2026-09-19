@@ -9,13 +9,24 @@ final class FixedChargeLimitTests: XCTestCase {
     // MARK: Presets
 
     func testPresetListMatchesAdvertisedValues() {
-        XCTAssertEqual(FixedChargeLimit.presetPercents, [60, 70, 80, 90, 100])
+        // Includes sub-80% presets: that is the point vs Apple's built-in
+        // Charge Limit (80–100%). Every value must stay within the
+        // firmware-limit validation bounds (both ≥ 5, gap ≥ 1).
+        XCTAssertEqual(FixedChargeLimit.presetPercents, [60, 70, 75, 80, 85, 90, 95, 100])
+        for preset in FixedChargeLimit.presetPercents {
+            XCTAssertNil(
+                FirmwareLimitValidation.problem(upper: preset, lower: FixedChargeLimit.defaultResumeThreshold(forUpper: preset)),
+                "Preset \(preset)% must produce a valid default policy"
+            )
+        }
     }
 
     func testIsPreset() {
         XCTAssertTrue(FixedChargeLimit.isPreset(80))
         XCTAssertTrue(FixedChargeLimit.isPreset(100))
-        XCTAssertFalse(FixedChargeLimit.isPreset(75))
+        XCTAssertTrue(FixedChargeLimit.isPreset(75))
+        XCTAssertTrue(FixedChargeLimit.isPreset(60))
+        XCTAssertFalse(FixedChargeLimit.isPreset(65))
         XCTAssertFalse(FixedChargeLimit.isPreset(0))
     }
 

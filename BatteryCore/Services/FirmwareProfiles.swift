@@ -24,8 +24,8 @@ public enum FirmwareProfileTier: String, Codable, Sendable, CaseIterable {
     /// No profile matches and the key signature is novel. Read-only
     /// diagnostics only until evidence is collected.
     case untested
-    /// Platform gate rejected the machine (outside M1–M4 / macOS 15), or
-    /// no control mechanism was detected at all.
+    /// Platform gate rejected the machine (outside M1–M4 / macOS 14, 15,
+    /// 26, 27), or no control mechanism was detected at all.
     case unsupported
 }
 
@@ -344,13 +344,16 @@ public enum FirmwareProfileLibrary {
     }
 
     /// Classify a machine into a confidence tier. Pure and unit-tested.
-    ///
     /// - Platform gate failures → `.unsupported` (never probe hardware).
     /// - A detected family matching a verified profile whose firmware build
     ///   matches the running machine → `.verified`.
     /// - Same family, different build → `.compatibleByCapability`.
     /// - No family detected → `.untested` (novel signature) or
     ///   `.unsupported` when the platform gate already excluded the machine.
+    ///
+    /// OS version is admission, never classification: machines on macOS
+    /// 14, 15, 26, or 27 are classified the same way — by detected family
+    /// plus evidence. An unknown signature on any OS stays read-only.
     public static func classify(
         identity: PlatformIdentity,
         detectedFamily: DetectedFamily,

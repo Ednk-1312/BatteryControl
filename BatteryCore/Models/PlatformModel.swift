@@ -1,10 +1,12 @@
 import Foundation
 
-/// Apple Silicon chip generations BatteryControl supports.
+/// Apple Silicon chip generations BatteryControl recognizes.
 ///
-/// Scope (deliberately narrow): M1–M4 on macOS 15 Sequoia. M5 ships with
-/// macOS 26 and cannot boot Sequoia, so there is no meaningful M5+macOS 15
-/// target. Intel is out of scope entirely (see ATTRIBUTION.md / README).
+/// M1–M4 are the admitted hardware range. M5 is parsed (so the app can
+/// name it precisely when refusing it); Intel is out of scope entirely.
+/// Hardware admission is necessary but not sufficient: what BatteryControl
+/// can actually control is decided at runtime by SMC probing and the
+/// firmware compatibility database — never by chip alone.
 public enum ChipGeneration: String, Codable, Sendable, CaseIterable, Comparable {
     case m1 = "Apple M1"
     case m2 = "Apple M2"
@@ -72,13 +74,22 @@ public struct PlatformIdentity: Codable, Equatable, Sendable {
         self.systemFirmwareBuild = systemFirmwareBuild
     }
 
-    public static let unsupportedMessage =
-        "BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 15 Sequoia."
+    /// The OS generations BatteryControl attempts to support: macOS 14
+    /// Sonoma, 15 Sequoia, 26 Tahoe, and 27.
+    public static let supportedOSMajors: [Int] = [14, 15, 26, 27]
 
-    /// The platform gate: Apple Silicon M1–M4, macOS 15.x only.
+    public static let unsupportedMessage =
+        "BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27."
+
+    /// The platform gate: Apple Silicon M1–M4 on macOS 14, 15, 26, or 27.
+    ///
+    /// Admission only allows the daemon to probe the machine's actual SMC
+    /// capabilities. Control is never granted by OS version alone — an
+    /// admitted machine with no recognizable mechanism stays read-only.
     public var isSupportedPlatform: Bool {
         guard isAppleSilicon, let chip = chipGeneration else { return false }
-        return (ChipGeneration.m1...ChipGeneration.m4).contains(chip) && osMajor == 15
+        guard (ChipGeneration.m1...ChipGeneration.m4).contains(chip) else { return false }
+        return Self.supportedOSMajors.contains(osMajor)
     }
 
     /// Human-readable reason when `isSupportedPlatform` is false, or nil.
@@ -91,18 +102,28 @@ public struct PlatformIdentity: Codable, Equatable, Sendable {
             return "This Mac's chip could not be identified. \(Self.unsupportedMessage)"
         }
         if chip > .m4 {
-            return "This Mac uses \(chip.rawValue), which is newer than the supported range. \(Self.unsupportedMessage)"
+            return "This Mac uses \(chip.rawValue), which is newer than the supported hardware range. \(Self.unsupportedMessage)"
         }
         if chip < .m1 {
             return "\(Self.unsupportedMessage)"
         }
-        if osMajor < 15 {
-            return "This Mac runs macOS \(osMajor).\(osMinor). \(Self.unsupportedMessage)"
-        }
-        if osMajor > 15 {
-            return "This Mac runs macOS \(osMajor) (Tahoe or newer). \(Self.unsupportedMessage)"
+        if !Self.supportedOSMajors.contains(osMajor) {
+            let osName: String
+            if osMajor < 14 {
+                osName = "macOS \(osMajor).\(osMinor)"
+            } else if osMajor == 26 {
+                osName = "macOS 26 (Tahoe)"
+            } else {
+                osName = "macOS \(osMajor)"
+            }
+            return "This Mac runs \(osName), which is outside the supported OS range. \(Self.unsupportedMessage)"
         }
         return Self.unsupportedMessage
+    }
+
+    /// The detected OS generation, when in the supported range.
+    public var osGeneration: OSGeneration? {
+        OSGeneration.from(major: osMajor)
     }
 
     /// Short line for diagnostics, e.g. "Apple M2 Pro · macOS 15.8 (24H23)".

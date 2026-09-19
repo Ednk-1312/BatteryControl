@@ -11,10 +11,14 @@ import Foundation
 /// percentage.
 public enum FixedChargeLimit {
 
-    /// The advertised one-tap presets. 100% is included for users who want
-    /// to disable limiting by charging fully (equivalent to passthrough
-    /// with an explicit full charge).
-    public static let presetPercents: [Int] = [60, 70, 80, 90, 100]
+    /// The advertised one-tap presets. Every value here is within the
+    /// firmware-limit validation bounds (both limits ≥ 5, gap ≥ 1), and
+    /// custom limits below 80% are the point: Apple's built-in Charge
+    /// Limit only spans 80–100%. A preset is only shown — never a promise
+    /// of enforcement: the backend still has to support the mechanism and
+    /// verify every write on this specific hardware. 100% is included for
+    /// users who want to disable limiting by charging fully.
+    public static let presetPercents: [Int] = [60, 70, 75, 80, 85, 90, 95, 100]
 
     /// Whether `upper` is one of the advertised presets (false → Custom).
     public static func isPreset(_ upper: Int) -> Bool {

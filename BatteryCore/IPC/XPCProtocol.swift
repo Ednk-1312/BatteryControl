@@ -133,6 +133,9 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
     public var firmwareProfileTier: String?
     /// Human-readable explanation of the tier for the diagnostics UI.
     public var firmwareProfileSummary: String?
+    /// Live state of Apple's built-in Charge Limit (macOS 26.4+), observed
+    /// by the daemon. Nil on older daemons that don't report it.
+    public var nativeChargeLimit: NativeChargeLimitState?
 
     public init(
         platform: PlatformIdentity,
@@ -148,7 +151,8 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
         helperUptimeSeconds: TimeInterval,
         recentLogEntries: [DiagnosticEntry],
         firmwareProfileTier: String? = nil,
-        firmwareProfileSummary: String? = nil
+        firmwareProfileSummary: String? = nil,
+        nativeChargeLimit: NativeChargeLimitState? = nil
     ) {
         self.platform = platform
         self.backendID = backendID
@@ -164,5 +168,6 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
         self.recentLogEntries = recentLogEntries
         self.firmwareProfileTier = firmwareProfileTier
         self.firmwareProfileSummary = firmwareProfileSummary
+        self.nativeChargeLimit = nativeChargeLimit
     }
 }

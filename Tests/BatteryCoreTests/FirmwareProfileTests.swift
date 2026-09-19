@@ -91,15 +91,76 @@ final class FirmwareProfileTests: XCTestCase {
     }
 
     func testUnsupportedPlatformClassifiesAsUnsupported() {
-        // macOS 14 is outside the current gate.
+        // macOS 28 is outside the (now four-generation) gate.
         var unsupported = verifiedIdentity
-        unsupported.osMajor = 14
+        unsupported.osMajor = 28
         let tier = FirmwareProfileLibrary.classify(
             identity: unsupported,
             detectedFamily: .firmwareLimit,
             systemFirmwareBuild: unsupported.systemFirmwareBuild
         )
         XCTAssertEqual(tier, .unsupported)
+    }
+
+    func testMacOS14ClassifiesLikeAnyOtherOS() {
+        // OS version is admission, never classification: a macOS 14 machine
+        // with the exact verified hardware/firmware identity classifies as
+        // verified; a macOS 14 machine with an unknown signature stays
+        // untested (read-only). The SMC probe — not the OS — decides.
+        var sonoma = verifiedIdentity
+        sonoma.osMajor = 14
+        sonoma.osMinor = 7
+        sonoma.osBuild = "23H124"
+        let exact = FirmwareProfileLibrary.classify(
+            identity: sonoma,
+            detectedFamily: .firmwareLimit,
+            systemFirmwareBuild: sonoma.systemFirmwareBuild
+        )
+        XCTAssertEqual(exact, .verified)
+
+        var unknownSonoma = sonoma
+        unknownSonoma.macModelIdentifier = "Mac99,9"
+        let untested = FirmwareProfileLibrary.classify(
+            identity: unknownSonoma,
+            detectedFamily: .firmwareLimit,
+            systemFirmwareBuild: unknownSonoma.systemFirmwareBuild
+        )
+        XCTAssertEqual(untested, .compatibleByCapability)
+    }
+
+    func testMacOS26And27ClassifyLikeAnyOtherOS() {
+        // Tahoe and 27 are admitted OS generations. Classification keys on
+        // machine + boot firmware build — the things SMC behavior actually
+        // depends on — so an OS upgrade on the SAME machine/firmware keeps
+        // the verified evidence valid, while a different firmware build is
+        // never auto-promoted.
+        var tahoe = verifiedIdentity
+        tahoe.osMajor = 26
+        tahoe.osMinor = 4
+        tahoe.osBuild = "25G74"
+        XCTAssertEqual(
+            FirmwareProfileLibrary.classify(
+                identity: tahoe,
+                detectedFamily: .firmwareLimit,
+                systemFirmwareBuild: tahoe.systemFirmwareBuild
+            ),
+            .verified,
+            "Same machine + same boot firmware after an OS upgrade → evidence still holds"
+        )
+
+        var macos27 = verifiedIdentity
+        macos27.osMajor = 27
+        macos27.osMinor = 0
+        macos27.osBuild = "26A100"
+        XCTAssertEqual(
+            FirmwareProfileLibrary.classify(
+                identity: macos27,
+                detectedFamily: .none,
+                systemFirmwareBuild: macos27.systemFirmwareBuild
+            ),
+            .untested,
+            "No detected mechanism on macOS 27 → read-only, exactly like any other OS"
+        )
     }
 
     func testLegacyFamilyNeverClaimsFirmwareLimitVerification() {

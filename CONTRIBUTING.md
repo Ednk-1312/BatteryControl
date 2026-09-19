@@ -1,7 +1,7 @@
 # Contributing to BatteryControl
 
 Thank you for helping build a general-purpose, hardware-evidence-backed battery-control
-utility for Apple Silicon Macs on macOS 15. There are two very different ways to
+utility for Apple Silicon Macs on macOS 14, 15, 26, or 27. There are two very different ways to
 contribute, and both matter:
 
 1. **Compatibility reports** — tell us what your Mac's firmware actually supports.
@@ -19,7 +19,7 @@ name. It probes the SMC at runtime and classifies your firmware into a tier:
 | **VERIFIED** | Exercised on this exact machine + firmware build with readback verification and observed enforcement | Allowed |
 | **COMPATIBLE / PROBABLE** | Key signature matches a known mechanism family; this exact build not yet exercised (every action still verified at runtime) | Allowed |
 | **UNTESTED** | Novel key signature not in the library | **Disabled — read-only** |
-| **UNSUPPORTED** | Outside the platform gate (M1–M4, macOS 15) or no mechanism | Never |
+| **UNSUPPORTED** | Outside the platform gate (M1–M4, macOS 14/15/26/27) or no mechanism | Never |
 
 ### 1. Export your report (read-only, safe)
 

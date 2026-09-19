@@ -100,6 +100,9 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
     /// Confidence tier from the firmware compatibility library, when the
     /// daemon classified the machine (nil on older daemons).
     public var firmwareProfileTier: FirmwareProfileTier?
+    /// Live state of Apple's built-in Charge Limit (macOS 26.4+), observed
+    /// by the daemon. Nil on older daemons that don't report it.
+    public var nativeChargeLimit: NativeChargeLimitState?
     public var timestamp: Date
 
     public init(
@@ -112,6 +115,7 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
         capabilities: BatteryCapabilities,
         helperStatus: HelperStatus,
         firmwareProfileTier: FirmwareProfileTier? = nil,
+        nativeChargeLimit: NativeChargeLimitState? = nil,
         timestamp: Date = Date()
     ) {
         self.readings = readings
@@ -123,6 +127,7 @@ public struct BatteryStatusSnapshot: Codable, Equatable, Sendable {
         self.capabilities = capabilities
         self.helperStatus = helperStatus
         self.firmwareProfileTier = firmwareProfileTier
+        self.nativeChargeLimit = nativeChargeLimit
         self.timestamp = timestamp
     }
 

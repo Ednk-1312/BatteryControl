@@ -10,8 +10,9 @@ the hardware work; the app and CLI just talk to it.
 
 ## What it does
 
-- **Charge limit.** Pick 60/70/80/90/100% or a custom value. Charging stops at your
-  limit and resumes at a lower limit (default: 2 points below). No micro-cycling.
+- **Charge limit.** Pick a preset (60/70/75/80/85/90/95/100%) or a custom value. Charging
+  stops at your limit and resumes at a lower limit (default: 2 points below). No micro-cycling.
+  Limits below 80% are the point — Apple's own built-in Charge Limit only spans 80–100%.
 - **Force discharge.** Cuts adapter input so the Mac runs on battery down to a target
   while plugged in. Stops at the target, at the 20% floor, on unplug, and before sleep.
 - **Charge to 100%.** One-time override, then the limit comes back.
@@ -24,7 +25,7 @@ the hardware work; the app and CLI just talk to it.
 
 | Feature | What it does | Caveats |
 |---|---|---|
-| Fixed Charge Limit | "Set my Mac to 80%" — presets (60/70/80/90/100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
+| Fixed Charge Limit | "Set my Mac to 80%" — presets (60–100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
 | Lower limit | Charging resumes only after the battery falls to it (hysteresis) | — |
 | Fixed target | Holds "about 80%" with a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
 | Force discharge | Runs on battery down to a target on AC | Slow (~1% per 5–10 min idle); auto-stops at target/floor/unplug/sleep |
@@ -36,16 +37,29 @@ the hardware work; the app and CLI just talk to it.
 ## Supported Macs
 
 - Apple Silicon M1, M2, M3, M4 (Pro/Max/Ultra included)
-- macOS 15.x (Sequoia)
+- macOS 14 Sonoma, 15 Sequoia, 26 Tahoe, or 27
 
-Intel Macs, M5-generation Macs, macOS 14 or earlier, and macOS 26 (Tahoe) or newer are
-out of scope. The app checks at startup and refuses to touch battery hardware outside
-that range — it shows this instead:
+Intel Macs, M5-generation Macs, macOS 13 or earlier, and macOS 28 or newer are out of
+scope. The app checks at startup and refuses to touch battery hardware outside that
+range — it shows this instead:
 
-> BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 15 Sequoia.
+> BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 14 Sonoma, macOS 15 Sequoia, macOS 26 Tahoe, or macOS 27.
 
-(M5 Macs ship with macOS 26 and can't boot Sequoia, so there's no M5 + macOS 15 target.
-macOS 14 support may come later; the platform gate is one line plus tests.)
+(M5-generation Macs are outside the hardware range this project has any evidence for.
+macOS 14 support may be refined as machines become available to test on.)
+
+**One important distinction:** a supported OS version gets you in the door — nothing
+more. What BatteryControl can actually control is decided at runtime by probing which
+SMC mechanisms your firmware exposes, and every write is read back and verified. A Mac
+on macOS 27 with an unknown key signature gets read-only diagnostics, exactly like a
+Mac on macOS 15 with the same signature. The OS never grants capability.
+
+On macOS 26.4 and later, Apple ships its own Charge Limit (80–100%) in System Settings.
+BatteryControl never writes that setting. When no BatteryControl limit is active, the
+app and CLI tell you who is actually managing charging; when you set a BatteryControl
+limit, the daemon verifies it against the real battery state, and it's the authoritative
+controller. Turn BatteryControl off and macOS default charging (including Apple's limit,
+if you enabled it) applies again.
 
 ## Installation
 
@@ -194,10 +208,15 @@ Where things stand:
   firmware, or older-firmware Macs with the CH0B/CH0C/CH0I keys. Those get control with
   per-write verification. If the hardware doesn't honor a write, the app says so
   instead of claiming success.
-- **Doesn't claim to work:** everything else on macOS 15. It runs, it diagnoses, it
-  stays read-only until there's evidence. There are portability and capability tests
-  in the suite, but those prove the software decides correctly — they are not a
-  substitute for testing real hardware.
+- **Doesn't claim to work:** everything else, whichever OS it's running. It runs, it
+  diagnoses, it stays read-only until there's evidence. There are portability and
+  capability tests in the suite, but those prove the software decides correctly — they
+  are not a substitute for testing real hardware.
+- **OS versions beyond 15 are admitted but unverified.** The classification logic is
+  OS-agnostic and tested for macOS 14/26/27, and the per-write verification is exactly
+  the same on every OS. But no macOS 14, 26, or 27 machine has physically run
+  BatteryControl yet — treat those as capability-tested only until someone actually
+  does.
 
 You can check what your Mac got: `batterycontrol compatibility`, or the Diagnostics page.
 

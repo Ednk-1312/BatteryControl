@@ -38,6 +38,15 @@ final class ControlEngine {
     private(set) var firmwareProfileTier: FirmwareProfileTier = .untested
     private(set) var firmwareProfileSummary: String = ""
 
+    /// Live state of Apple's built-in Charge Limit (macOS 26.4+), observed
+    /// from the IOKit battery registry each tick. Feeds the ownership
+    /// model: there is one authoritative controller at a time, and when
+    /// no BatteryControl policy is set, the UI/CLI can say who IS limiting
+    /// charging. Read-only observation — BatteryControl never writes
+    /// Apple's setting.
+    private(set) var nativeChargeLimit = NativeChargeLimitState.unknown
+    private(set) var platformIdentity: PlatformIdentity?
+
     // Bookkeeping for bounded retries.
     private var attemptNumber = 0
     /// The last discharge session seen by the tick loop; a falling edge
@@ -284,6 +293,18 @@ final class ControlEngine {
             return
         }
         lastReadings = readings
+
+        // Observe Apple's native Charge Limit (macOS 26.4+) read-only, so
+        // ownership can be reported honestly when no BatteryControl policy
+        // is active. Never a control input — policy application is driven
+        // entirely by the user's policy + override + calibration.
+        let identity = platformIdentity ?? PlatformDetector.detect()
+        platformIdentity = identity
+        nativeChargeLimit = OwnershipDecisions.nativeState(
+            fromSmartBattery: PlatformDetector.readAppleSmartBattery(),
+            osMajor: identity.osMajor,
+            osMinor: identity.osMinor
+        )
 
         let state = store.state
         var override = state.override
@@ -700,6 +721,7 @@ final class ControlEngine {
                 capabilities: capabilities,
                 helperStatus: helperStatus,
                 firmwareProfileTier: firmwareProfileTier,
+                nativeChargeLimit: nativeChargeLimit,
             )
         }
     }
@@ -812,7 +834,8 @@ final class ControlEngine {
                 helperUptimeSeconds: uptime,
                 recentLogEntries: DaemonLog.recentEntries(),
                 firmwareProfileTier: firmwareProfileTier.rawValue,
-                firmwareProfileSummary: firmwareProfileSummary
+                firmwareProfileSummary: firmwareProfileSummary,
+                nativeChargeLimit: nativeChargeLimit
             )
         }
     }

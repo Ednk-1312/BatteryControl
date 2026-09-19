@@ -378,6 +378,17 @@ public enum CLIRunner {
             lines.append("System firmware:      \(build)")
         }
         lines.append("Compatibility tier:   \(report.firmwareProfileTier ?? "unknown")")
+        lines.append("Supported operations: \(supportedOperations(report.capabilities))")
+        if let native = report.nativeChargeLimit, native.featureExistsOnThisOS {
+            let engaged: String
+            switch native.nativeLimitEngaged {
+            case .some(true): engaged = "engaged (80–100%)"
+            case .some(false): engaged = "not engaged"
+            case .none: engaged = "state could not be read"
+            }
+            lines.append("Apple Charge Limit:   \(engaged)")
+            lines.append("                      BatteryControl's custom limits can go below Apple's 80% minimum.")
+        }
         switch report.firmwareProfileTier {
         case FirmwareProfileTier.verified.rawValue:
             lines.append("This exact hardware/firmware combination has been exercised with readback verification.")
@@ -391,5 +402,21 @@ public enum CLIRunner {
             break
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// Human-readable list of what the active backend can do on this
+    /// machine, from the daemon's runtime capability probe.
+    private static func supportedOperations(_ caps: BatteryCapabilities) -> String {
+        var ops: [String] = []
+        if caps.supportsVerifiedChargingControl {
+            ops.append("charge limit (verified)")
+        } else if caps.supportsFixedLimit {
+            ops.append("charge limit (unverified on this OS — diagnostics only)")
+        }
+        if caps.supportsForceDischarge { ops.append("force discharge") }
+        if caps.supportsForceCharge { ops.append("force charge") }
+        if caps.supportsCalibration { ops.append("calibration") }
+        if caps.supportsSMC { ops.append("SMC telemetry") }
+        return ops.isEmpty ? "none — diagnostics only" : ops.joined(separator: ", ")
     }
 }
