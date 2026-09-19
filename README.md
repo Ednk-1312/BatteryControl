@@ -195,6 +195,16 @@ The short version: the daemon never trusts a write.
 - One `SMAppService` registration, no sudoers entries, no stored passwords, no
   permanent root shells.
 
+## Security
+
+Found something that looks like a security problem? Please don't open a public
+issue for it — use [private vulnerability
+reporting](https://github.com/Ednk-1312/BatteryControl/security/advisories/new)
+so it can be fixed before it's a recipe. What counts as in scope (privilege
+boundary, XPC validation, safety-check bypasses) is written up in
+[SECURITY.md](SECURITY.md), along with what a useful report includes. Feature
+requests and regular bugs should stay public issues.
+
 ## Compatibility
 
 This is the part you should actually read.
