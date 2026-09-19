@@ -15,4 +15,6 @@ import Foundation
     func beginCalibration(withReply reply: @escaping (XPCEnvelope?) -> Void)
     func cancelCalibration(withReply reply: @escaping (XPCEnvelope?) -> Void)
     func runDiagnostics(withReply reply: @escaping (XPCEnvelope?) -> Void)
+    func exportCompatibilityReport(withReply reply: @escaping (XPCEnvelope?) -> Void)
+    func installCompatibilityDatabase(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void)
 }

@@ -39,10 +39,22 @@ public enum CLIRunner {
             return await chargeStart(target: target)
         case .chargeStop:
             return await chargeStop()
+        case .calibrationStatus:
+            return await calibrationStatus()
+        case .calibrationStart:
+            return await calibrationStart()
+        case .calibrationCancel:
+            return await calibrationCancel()
+        case .updateCheck:
+            return await updateCheck()
         case .diagnostics:
             return await diagnostics()
         case .compatibility:
             return await compatibility()
+        case .compatibilityReport:
+            return await compatibilityReport()
+        case .databaseInstall(let path):
+            return await databaseInstall(path: path)
         }
     }
 
@@ -201,6 +213,132 @@ public enum CLIRunner {
             return (communicationFailure(), .communicationFailure)
         }
         return (renderAck(ack), .success)
+    }
+
+    // MARK: - Calibration
+
+    private static func calibrationStatus() async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available(let response):
+            return (renderCalibration(response.snapshot), .success)
+        }
+    }
+
+    private static func calibrationStart() async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available(let response):
+            guard response.snapshot.capabilities.supportsCalibration else {
+                return (safetyRejection(response, reason:
+                    "The active backend on this machine cannot verify the calibration " +
+                    "stages, so the command is refused rather than pretending to work."), .safetyRejection)
+            }
+            guard let ack = await DaemonXPCClient.shared.beginCalibration() else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            return (renderAck(ack), ack.accepted ? .success : .safetyRejection)
+        }
+    }
+
+    private static func calibrationCancel() async -> (String, BatteryControlCLI.ExitCode) {
+        guard let ack = await DaemonXPCClient.shared.cancelCalibration() else {
+            return (communicationFailure(), .communicationFailure)
+        }
+        return (renderAck(ack), .success)
+    }
+
+    // MARK: - Compatibility report / database
+
+    private static func updateCheck() async -> (String, BatteryControlCLI.ExitCode) {
+        var request = URLRequest(url: UpdateCheck.apiLatestRelease)
+        request.timeoutInterval = 15
+        request.setValue("BatteryControl-CLI/\(BatteryXPC.expectedHelperVersion)", forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            let release = try UpdateCheck.parseLatestRelease(fromData: data)
+            let current = BatteryXPC.expectedHelperVersion
+            if UpdateCheck.isNewer(release.tagName, than: current) {
+                return ("""
+                A newer release is available: \(release.tagName) (installed: \(current))
+                \(release.htmlURL)
+
+                BatteryControl never updates itself — download and install the new
+                release when you choose to.
+                """, .success)
+            }
+            return ("BatteryControl is up to date (\(current)).", .success)
+        } catch UpdateCheck.ParseError.notARelease {
+            return ("No published release was found.", .success)
+        } catch {
+            return ("Could not reach GitHub: \(error.localizedDescription)", .communicationFailure)
+        }
+    }
+
+    private static func compatibilityReport() async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available:
+            guard let report = await DaemonXPCClient.shared.exportCompatibilityReport() else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            let violations = CompatibilityReport.privacyViolations(in: report)
+            if !violations.isEmpty {
+                return ("""
+                Refused to emit the report: it contains PII-shaped keys (\(violations.joined(separator: ", "))).
+                This is a bug — please report it. No file was written.
+                """, .safetyRejection)
+            }
+            guard let data = try? report.jsonData(), let json = String(data: data, encoding: .utf8) else {
+                return ("FAILED to serialize the report.", .hardwareWriteFailure)
+            }
+            return (json, .success)
+        }
+    }
+
+    private static func databaseInstall(path: String) async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available:
+            guard let data = FileManager.default.contents(atPath: path) else {
+                return ("Could not read \(path).", .notFound)
+            }
+            guard let payload = try? JSONDecoder().decode(FirmwareProfileLibrary.DatabasePayload.self, from: data) else {
+                return ("""
+                \(path) is not a valid compatibility database (expected {"schemaVersion":1,"profiles":[…]}).
+                """, .invalidArguments)
+            }
+            // Early, precise feedback; the daemon re-validates everything.
+            do {
+                _ = try CompatibilityDatabaseInstaller.validatedPayload(payload)
+            } catch let error as CompatibilityDatabaseInstaller.InstallError {
+                if case .databaseInvalid(let reason) = error {
+                    return ("Rejected: \(reason)", .safetyRejection)
+                }
+            } catch {}
+            guard let outcome = await DaemonXPCClient.shared.installCompatibilityDatabaseWithRejection(payload) else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            if let rejection = outcome.rejectedMessage {
+                return ("Rejected by the daemon: \(rejection)", .safetyRejection)
+            }
+            guard let result = outcome.result else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            return ("""
+            Installed \(result.acceptedProfiles) profile(s); \(result.totalProfiles) profile(s) now active.
+            Path: \(result.installedPath)
+            Database entries broaden recognition only — every machine is still probed and verified at runtime.
+            """, .success)
+        }
     }
 
     // MARK: - Diagnostics / compatibility
@@ -450,5 +588,34 @@ public enum CLIRunner {
         if caps.supportsCalibration { ops.append("calibration") }
         if caps.supportsSMC { ops.append("SMC telemetry") }
         return ops.isEmpty ? "none — diagnostics only" : ops.joined(separator: ", ")
+    }
+
+    private static func renderCalibration(_ s: BatteryStatusSnapshot) -> String {
+        var lines: [String] = []
+        lines.append("BatteryControl calibration")
+        lines.append("")
+        guard let session = s.activeCalibration, session.isActive else {
+            if let finished = s.activeCalibration, finished.stage == .finish {
+                lines.append("Stage:               Finished")
+                lines.append("Your normal charging policy is active again.")
+            } else {
+                lines.append("Stage:               Not running")
+                lines.append("Start one with: batterycontrol calibration start")
+            }
+            lines.append("Hardware Verified:   \(s.controlIsVerified ? "Yes" : "Unknown")")
+            return lines.joined(separator: "\n")
+        }
+        lines.append("Stage:               \(session.stage.displayName)")
+        lines.append("Detail:              \(session.stage.detailText)")
+        lines.append("Battery:             \(s.readings.percentage)%")
+        if let entered = session.stageEnteredAt {
+            let minutes = Int(Date().timeIntervalSince(entered) / 60)
+            lines.append("Time in stage:       \(minutes) min")
+        }
+        if let abort = session.abortReason {
+            lines.append("Aborted:             \(abort)")
+        }
+        lines.append("Hardware Verified:   \(s.controlIsVerified ? "Yes" : "Unknown")")
+        return lines.joined(separator: "\n")
     }
 }

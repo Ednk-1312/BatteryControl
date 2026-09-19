@@ -77,6 +77,7 @@ final class CLICommandTests: XCTestCase {
     }
 
     func testParseDiagnosticsCompatibilityVersionHelp() throws {
+        XCTAssertEqual(try BatteryControlCLI.parse(["update-check"]), .updateCheck)
         XCTAssertEqual(try BatteryControlCLI.parse(["diagnostics"]), .diagnostics)
         XCTAssertEqual(try BatteryControlCLI.parse(["compatibility"]), .compatibility)
         XCTAssertEqual(try BatteryControlCLI.parse(["version"]), .version)
@@ -114,6 +115,36 @@ final class CLICommandTests: XCTestCase {
 
     func testParseDischargeStartUnknownFlagThrows() {
         XCTAssertThrowsError(try BatteryControlCLI.parse(["discharge", "start", "60", "--bogus"]))
+    }
+
+    // MARK: - Calibration parsing
+
+    func testParseCalibrationCommands() throws {
+        XCTAssertEqual(try BatteryControlCLI.parse(["calibration", "status"]), .calibrationStatus)
+        XCTAssertEqual(try BatteryControlCLI.parse(["calibration", "start"]), .calibrationStart)
+        XCTAssertEqual(try BatteryControlCLI.parse(["calibration", "cancel"]), .calibrationCancel)
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["calibration"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["calibration", "start", "80"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["calibration", "frobnicate"]))
+    }
+
+    // MARK: - Compatibility report / database parsing
+
+    func testParseCompatibilityWithReportFlag() throws {
+        XCTAssertEqual(try BatteryControlCLI.parse(["compatibility", "--report"]), .compatibilityReport)
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["compatibility", "--report", "extra"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["compatibility", "--bogus"]))
+    }
+
+    func testParseDatabaseInstall() throws {
+        XCTAssertEqual(
+            try BatteryControlCLI.parse(["database", "install", "/tmp/db.json"]),
+            .databaseInstall(path: "/tmp/db.json")
+        )
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["database"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["database", "install"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["database", "install", "a.json", "b.json"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["database", "frobnicate"]))
     }
 
     // MARK: - Rendering honesty (no fabricated states)

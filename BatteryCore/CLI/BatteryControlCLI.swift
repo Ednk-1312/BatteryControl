@@ -38,9 +38,21 @@ public enum BatteryControlCLI {
         case dischargeStop
         case chargeStart(target: Int?)
         case chargeStop
+        case calibrationStatus
+        case calibrationStart
+        case calibrationCancel
         case diagnostics
         case compatibility
+        /// `compatibility --report` — machine-evidence JSON for the
+        /// community compatibility database.
+        case compatibilityReport
+        /// `database install <file>` — hand a validated database JSON to
+        /// the daemon (the only writer of the root-owned file).
+        case databaseInstall(path: String)
         case version
+        /// `update-check` — opt-in passive query of the latest GitHub
+        /// release. Nothing is downloaded or installed.
+        case updateCheck
         case help
     }
 
@@ -119,11 +131,61 @@ public enum BatteryControlCLI {
                 throw UsageError("unknown 'charge' subcommand '\(sub)' — expected start or stop")
             }
 
+        case "calibration":
+            guard let sub = rest.first else {
+                throw UsageError("missing subcommand: expected 'calibration status', 'calibration start' or 'calibration cancel'")
+            }
+            rest.removeFirst()
+            switch sub {
+            case "status":
+                return .calibrationStatus
+            case "start":
+                guard rest.isEmpty else {
+                    throw UsageError("unexpected argument after 'calibration start'")
+                }
+                return .calibrationStart
+            case "cancel":
+                guard rest.isEmpty else {
+                    throw UsageError("unexpected argument after 'calibration cancel'")
+                }
+                return .calibrationCancel
+            default:
+                throw UsageError("unknown 'calibration' subcommand — expected status, start, or cancel")
+            }
+
+        case "update-check":
+            return .updateCheck
+
         case "diagnostics":
             return .diagnostics
 
         case "compatibility":
-            return .compatibility
+            switch rest.first {
+            case nil:
+                return .compatibility
+            case "--report":
+                guard rest.count == 1 else {
+                    throw UsageError("compatibility --report takes no arguments")
+                }
+                return .compatibilityReport
+            default:
+                throw UsageError("unknown 'compatibility' argument — expected --report")
+            }
+
+        case "database":
+            guard let sub = rest.first else {
+                throw UsageError("missing subcommand: expected 'database install <file>'")
+            }
+            rest.removeFirst()
+            switch sub {
+            case "install":
+                guard rest.count == 1 else {
+                    throw UsageError("database install expects exactly one JSON file path")
+                }
+                return .databaseInstall(path: rest[0])
+            default:
+                throw UsageError("unknown 'database' subcommand — expected install <file>")
+            }
 
         default:
             throw UsageError("unknown command '\(first)' — try 'batterycontrol help'")
@@ -232,9 +294,17 @@ public enum BatteryControlCLI {
       discharge stop                  Stop an active discharge
       charge start [pct]              Charge past the limit to <pct> (default 100)
       charge stop                     Stop a force-charge and restore the limit
+      calibration status              Guided gauge-calibration session state
+      calibration start               Begin the full calibration cycle
+      calibration cancel              Cancel calibration; normal charging resumes
       diagnostics                     Full control/backend/verification report
       compatibility                   Hardware + firmware compatibility tier
+      compatibility --report          Machine-evidence JSON for the community
+                                      compatibility database (no personal data)
+      database install <file>         Install a reviewed compatibility database
       version                         Print the CLI and daemon versions
+      update-check                    Ask GitHub if a newer release exists
+                                      (prints the link; installs nothing)
       help                            Show this help
 
     SAFETY

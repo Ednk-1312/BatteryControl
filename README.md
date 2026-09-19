@@ -154,8 +154,14 @@ batterycontrol discharge stop             # end the discharge, restore adapter i
 batterycontrol charge start               # charge past the limit to 100%
 batterycontrol charge start 90            # charge past the limit to 90%
 batterycontrol charge stop                # end a force-charge, restore the limit
+batterycontrol calibration status         # gauge-calibration session state
+batterycontrol calibration start          # full calibration cycle (discharge → 100% → hold 3h → limit)
+batterycontrol calibration cancel         # cancel; normal charging resumes
 batterycontrol diagnostics                # full control/backend/verification report
 batterycontrol compatibility              # which control mechanisms this Mac supports
+batterycontrol compatibility --report     # machine-evidence JSON for the compatibility database
+batterycontrol database install db.json   # install a reviewed compatibility database
+batterycontrol update-check               # ask GitHub if a newer release exists
 batterycontrol version                    # CLI and daemon versions
 batterycontrol help                       # usage
 ```
@@ -245,16 +251,31 @@ that ever changes). Machine facts live only in the evidence database. A communit
 database at `/Library/Application Support/BatteryControl/compatibility.json` (schema in
 `Support/CompatibilityDatabase.json`) can add profiles without an app update.
 
-If your Mac reports as untested and you want to help: run the read-only export and
-open an issue with the JSON.
+If your Mac reports as untested and you want to help: export the report and open an
+issue with the JSON. Three ways, same output:
 
 ```sh
-sudo com.batterycontrol.daemon --export-compat-report ~/Desktop/bc-compat-report.json
+batterycontrol compatibility --report                                    # needs the daemon running
+sudo com.batterycontrol.daemon --export-compat-report ~/Desktop/report.json  # works without it
 ```
 
-It contains your chip, model identifier, OS and firmware builds, and the SMC key
-signature. No serial numbers, UUIDs, username, or paths. More in
+or **Diagnostics → Export Compatibility Report…** in the app. It contains your chip,
+model identifier, OS and firmware builds, and the SMC key signature. No serial
+numbers, UUIDs, username, or paths. Use the **Compatibility report** issue template —
+its fields match the JSON, so reports land ready to review. More in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+The community database (`Support/CompatibilityDatabase.json` in the repo, schema
+version 1) can also be installed on a machine without waiting for an app release:
+
+```sh
+batterycontrol database install ~/Downloads/compatibility.json
+```
+
+The privileged daemon validates the file and is the only thing that can write it. A
+database entry broadens *recognition* only — your Mac's hardware is still probed and
+verified at runtime before any control is allowed. There's an "Install Database File…"
+button in Settings for the non-terminal route.
 
 ## Building from source
 
@@ -392,9 +413,10 @@ verification sessions only). `--diag-smc` is read-only and reports the detected 
 
 ## Contributing
 
-The most useful thing you can send me is a compatibility report — run the export
-command above and open an issue with the JSON. That's what grows the list of machines
-this actually works on.
+The most useful thing you can send me is a compatibility report — run
+`batterycontrol compatibility --report` (or the app's Diagnostics → Export
+Compatibility Report) and open an issue with the JSON using the Compatibility report
+template. That's what grows the list of machines this actually works on.
 
 Code contributions are welcome too. The rules that matter: capability detection at
 runtime only (never model/OS-based), readback verification on every write path, honest

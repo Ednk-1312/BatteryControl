@@ -1,5 +1,7 @@
+import AppKit
 import BatteryCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Battery information: only fields the hardware actually provides. When a
 /// value is unavailable it is omitted, not faked.
@@ -172,6 +174,20 @@ struct DiagnosticsView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button("Export Compatibility Report…") {
+                    exportCompatibilityReport()
+                }
+                .disabled(report == nil)
+                if let exportMessage {
+                    Text(exportMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Text("The report contains hardware and firmware facts only — no serial numbers, names, or locations. Submit it with a compatibility report so this Mac can be added to the verified database (see CONTRIBUTING.md).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Recent helper log") {
@@ -227,6 +243,43 @@ struct DiagnosticsView: View {
         case "untested": return "Untested firmware (read-only)"
         case "unsupported": return "Unsupported"
         default: return raw
+        }
+    }
+
+    // MARK: Compatibility report export
+
+    @State private var exportMessage: String?
+
+    /// Generate the machine-evidence report through the daemon and hand the
+    /// user a save dialog. Same generator as the CLI and the daemon flag.
+    private func exportCompatibilityReport() {
+        Task {
+            guard let report = await DaemonXPCClient.shared.exportCompatibilityReport() else {
+                exportMessage = "Could not reach the helper — try again after Repair Helper."
+                return
+            }
+            let violations = CompatibilityReport.privacyViolations(in: report)
+            if !violations.isEmpty {
+                exportMessage = "Report blocked: it contains unexpected keys (\(violations.joined(separator: ", "))). No file was written."
+                return
+            }
+            guard let data = try? report.jsonData() else {
+                exportMessage = "Could not serialize the report."
+                return
+            }
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.json]
+            panel.nameFieldStringValue = "batterycontrol-compatibility-report.json"
+            guard panel.runModal() == .OK, let url = panel.url else {
+                exportMessage = nil
+                return
+            }
+            do {
+                try data.write(to: url)
+                exportMessage = "Saved to \(url.lastPathComponent)."
+            } catch {
+                exportMessage = "Could not write the file: \(error.localizedDescription)"
+            }
         }
     }
 }

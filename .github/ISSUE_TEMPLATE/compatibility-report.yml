@@ -1,0 +1,68 @@
+name: Compatibility report
+description: Tell us what your Mac's firmware actually supports so it can be added to the verified compatibility database
+title: "Compatibility: <Mac model identifier> / <firmware build>"
+labels: ["compatibility-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks — these reports are the single most valuable contribution to
+        BatteryControl. They grow the database that decides what is safe on
+        real machines.
+
+        **How to generate the data:** run
+
+        ```
+        batterycontrol compatibility --report
+        ```
+
+        (or use "Export Compatibility Report" in the app's Diagnostics tab),
+        then paste the JSON below. The report contains hardware and firmware
+        facts only — no serial numbers, account names, or locations.
+
+        BatteryControl never marks a machine "verified" from a report alone:
+        reports are reviewed, and verification requires the described control
+        behavior to be exercised with readback confirmation. An unknown
+        signature stays read-only either way — a report can only ever
+        *broaden recognition*, never bypass the runtime capability probe.
+
+  - type: textarea
+    id: report-json
+    attributes:
+      label: Report JSON
+      description: Full output of `batterycontrol compatibility --report`
+      placeholder: |
+        {
+          "detectedControlFamily": "...",
+          "firmwareProfileTier": "...",
+          "generatedAt": "...",
+          "hardware": { ... },
+          "profileNotes": [ ... ],
+          "reportVersion": 1,
+          "smcCapabilitySignature": { ... }
+        }
+    validations:
+      required: true
+
+  - type: dropdown
+    id: control-behavior
+    attributes:
+      label: What did you observe on real hardware?
+      description: Only what you actually saw. "Not tested" is a fine answer.
+      options:
+        - Not tested — diagnostics only
+        - A charge limit was set and the battery stopped charging at it
+        - A charge limit was set but charging did NOT stop at it
+        - Force discharge worked (ran on battery while plugged in)
+        - Force charge worked (charged past an active limit)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything unusual — adapter behavior, sleep/wake behavior, error messages, the macOS beta channel, etc.
+    validations:
+      required: false

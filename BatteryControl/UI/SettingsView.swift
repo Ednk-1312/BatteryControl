@@ -1,7 +1,9 @@
+import AppKit
 import BatteryCore
 import os
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings scene: menu-bar visibility, launch-at-login, helper management.
 struct SettingsView: View {
@@ -54,6 +56,47 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Compatibility Database") {
+                Button("Install Database File…") {
+                    installDatabase()
+                }
+                if let databaseMessage {
+                    Text(databaseMessage)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                        .foregroundStyle(databaseAccepted ? Color.secondary : Color.red)
+                }
+                Text("Optional: install a reviewed compatibility database (JSON) so newly verified Macs are recognized without waiting for an app update. The privileged helper validates the file and is the only thing that can write it. A database entry broadens recognition only — this Mac's hardware is still probed and verified at runtime before any control is allowed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Updates") {
+                Toggle("Check for updates (daily, passive)", isOn: Binding(
+                    get: { appState.updateCheckEnabled },
+                    set: { appState.updateCheckEnabled = $0 }
+                ))
+                Text("Asks GitHub once a day whether a newer release exists. Nothing is downloaded or installed automatically, and no identifying information is sent. Turning this off stops all update-related network requests.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let update = appState.availableUpdate {
+                    HStack {
+                        Text("Newer release available: \(update.tagName)")
+                            .font(.callout.weight(.medium))
+                        Link("View release", destination: URL(string: update.htmlURL) ?? UpdateCheck.releasesURL)
+                    }
+                } else if appState.updateCheckFailed {
+                    Text("The last update check could not reach GitHub. It will retry later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Check Now") {
+                    appState.performUpdateCheckNow()
+                }
+            }
+
             Section("About") {
                 LabeledContent("Version", value: appVersion)
                 LabeledContent("Scope", value: "Apple Silicon M1–M5 · macOS 14/15/26/27")
@@ -86,6 +129,46 @@ struct SettingsView: View {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(version) (\(build))"
+    }
+
+    // MARK: Compatibility database install
+
+    @State private var databaseMessage: String?
+    @State private var databaseAccepted = true
+
+    /// Hand a community database file to the daemon over XPC. The daemon
+    /// validates and installs it; this UI never writes the root-owned file.
+    private func installDatabase() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            guard let data = try? Data(contentsOf: url),
+                  let payload = try? JSONDecoder().decode(FirmwareProfileLibrary.DatabasePayload.self, from: data) else {
+                databaseAccepted = false
+                databaseMessage = "\(url.lastPathComponent) is not a valid compatibility database."
+                return
+            }
+            guard let outcome = await DaemonXPCClient.shared.installCompatibilityDatabaseWithRejection(payload) else {
+                databaseAccepted = false
+                databaseMessage = "Could not reach the helper — try again after Repair Helper."
+                return
+            }
+            if let rejection = outcome.rejectedMessage {
+                databaseAccepted = false
+                databaseMessage = "Rejected: \(rejection)"
+                return
+            }
+            guard let result = outcome.result else {
+                databaseAccepted = false
+                databaseMessage = "Communication with the helper failed mid-request."
+                return
+            }
+            databaseAccepted = true
+            databaseMessage = "Installed \(result.acceptedProfiles) profile(s); \(result.totalProfiles) now active."
+        }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

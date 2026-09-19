@@ -262,6 +262,74 @@ public final class DaemonXPCClient: @unchecked Sendable {
         }
     }
 
+    // MARK: - Compatibility report / database
+
+    /// Request the machine-evidence compatibility report from the daemon.
+    /// Read-only on the daemon side; safe on any machine.
+    public func exportCompatibilityReport() async -> CompatibilityReport? {
+        let once = OnceDelivery<CompatibilityReport?>(default: nil)
+        return await race(once) {
+            self.queue.async { [weak self] in
+                guard let self, let proxy = self.remoteObject() else {
+                    once.deliver(nil)
+                    return
+                }
+                proxy.exportCompatibilityReport { envelope in
+                    once.deliver(envelope?.decode(
+                        CompatibilityReport.self,
+                        expectingKind: XPCEnvelope.kindCompatibilityReport
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Install a community compatibility database through the daemon (the
+    /// only writer of the root-owned file). Returns nil on transport
+    /// failure; use `installCompatibilityDatabaseWithRejection` when the
+    /// caller must distinguish a daemon-side rejection from a failure.
+    public func installCompatibilityDatabase(
+        _ payload: FirmwareProfileLibrary.DatabasePayload
+    ) async -> DatabaseInstallResult? {
+        await installCompatibilityDatabaseWithRejection(payload)?.result
+    }
+
+    /// Same round-trip, surfacing a daemon-side rejection (accepted=false)
+    /// separately from a transport failure (nil).
+    public func installCompatibilityDatabaseWithRejection(
+        _ payload: FirmwareProfileLibrary.DatabasePayload
+    ) async -> (result: DatabaseInstallResult?, rejectedMessage: String?)? {
+        guard let envelope = XPCEnvelope.encode(
+            InstallDatabaseRequest(schemaVersion: payload.schemaVersion, profiles: payload.profiles),
+            kind: XPCEnvelope.kindDatabaseInstall
+        ) else { return nil }
+        let once = OnceDelivery<(DatabaseInstallResult?, String?)?>(default: nil)
+        let outcome = await race(once) {
+            self.queue.async { [weak self] in
+                guard let self, let proxy = self.remoteObject() else {
+                    once.deliver(nil)
+                    return
+                }
+                proxy.installCompatibilityDatabase(envelope) { reply in
+                    if let result = reply?.decode(
+                        DatabaseInstallResult.self,
+                        expectingKind: XPCEnvelope.kindCompatibilityReport
+                    ) {
+                        once.deliver((result, nil))
+                    } else if let ack = reply?.decode(
+                        OperationAck.self,
+                        expectingKind: XPCEnvelope.kindAck
+                    ), !ack.accepted {
+                        once.deliver((nil, ack.message))
+                    } else {
+                        once.deliver((nil, nil))
+                    }
+                }
+            }
+        }
+        return outcome
+    }
+
     // MARK: - Synchronous helpers (installer / teardown paths)
 
     /// Blocking status probe with a bounded wait. Never blocks longer than

@@ -69,6 +69,77 @@ final class AppState: ObservableObject {
     /// From the setup flow: whether first-run setup completed.
     @Published var setupComplete: Bool = UserDefaults.standard.bool(forKey: "setupComplete")
 
+    // MARK: Update check (passive, no auto-install)
+
+    /// A newer GitHub release, when the last check found one. Filled by the
+    /// passive daily check; updating is always a deliberate user action.
+    @Published private(set) var availableUpdate: UpdateCheck.Release?
+    @Published private(set) var updateCheckFailed = false
+
+    private static let updateCheckEnabledKey = "updateCheckEnabled"
+    private static let updateCheckLastCompletedKey = "updateCheckLastCompleted"
+
+    /// Whether the passive update check is enabled. Default on with a
+    /// visible setting (the audience expects a plain link, not silence);
+    /// disabling it stops all network requests. (@Published + UserDefaults,
+    /// NOT @AppStorage: this class is an ObservableObject, where @AppStorage
+    /// does not publish changes to observing views.)
+    @Published var updateCheckEnabled: Bool = UserDefaults.standard.object(
+        forKey: "updateCheckEnabled"
+    ) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(updateCheckEnabled, forKey: Self.updateCheckEnabledKey)
+            if !updateCheckEnabled {
+                availableUpdate = nil
+                updateCheckFailed = false
+            }
+        }
+    }
+
+    var updateCheckLastCompletedDate: Date? {
+        let stored = UserDefaults.standard.double(forKey: Self.updateCheckLastCompletedKey)
+        return stored > 0 ? Date(timeIntervalSince1970: stored) : nil
+    }
+
+    private func setUpdateCheckCompleted(at date: Date) {
+        UserDefaults.standard.set(date.timeIntervalSince1970, forKey: Self.updateCheckLastCompletedKey)
+    }
+
+    /// One passive check: fetch the latest GitHub release and surface a
+    /// link when it is newer than this build. Failures set a quiet flag and
+    /// are retried on the next cadence — never aggressively, never loudly.
+    func performUpdateCheckIfDue(now: Date = Date()) {
+        guard updateCheckEnabled else { return }
+        guard UpdateCheck.isCheckDue(lastCheck: updateCheckLastCompletedDate, now: now) else { return }
+        Task {
+            var request = URLRequest(url: UpdateCheck.apiLatestRelease)
+            request.timeoutInterval = 15
+            // No identifiers of any kind beyond what TLS itself exposes.
+            request.setValue("BatteryControl/\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")", forHTTPHeaderField: "User-Agent")
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                let release = try UpdateCheck.parseLatestRelease(fromData: data)
+                let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                let newer = UpdateCheck.isNewer(release.tagName, than: current)
+                await MainActor.run {
+                    self.availableUpdate = newer ? release : nil
+                    self.updateCheckFailed = false
+                    self.setUpdateCheckCompleted(at: now)
+                }
+            } catch {
+                // Quiet failure; retried on the next cadence.
+                await MainActor.run { self.updateCheckFailed = true }
+            }
+        }
+    }
+
+    /// Immediate check requested from the UI ("Check Now"): bypasses the
+    /// cadence gate but still respects the enabled setting.
+    func performUpdateCheckNow() {
+        UserDefaults.standard.set(0.0, forKey: Self.updateCheckLastCompletedKey)
+        performUpdateCheckIfDue()
+    }
+
     let batteryMonitor = BatteryMonitorService()
     private let installer = HelperInstaller()
     private var refreshTimer: Timer?
@@ -89,6 +160,8 @@ final class AppState: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { await self?.poll() }
         }
+        // Passive update check: at most daily, no auto-download.
+        performUpdateCheckIfDue()
     }
 
     /// Client-side facts for the staleness check: this process's start time

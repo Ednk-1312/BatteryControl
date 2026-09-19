@@ -37,6 +37,9 @@ final class ControlEngine {
     /// classified from the runtime-detected SMC family + profile library.
     private(set) var firmwareProfileTier: FirmwareProfileTier = .untested
     private(set) var firmwareProfileSummary: String = ""
+    /// Runtime-detected SMC control family (recorded at hardware init so
+    /// report generation never needs to re-probe the SMC).
+    private(set) var detectedSMCFamily: FirmwareProfileLibrary.DetectedFamily = .none
 
     /// Live state of Apple's built-in Charge Limit (macOS 26.4+), observed
     /// from the IOKit battery registry each tick. Feeds the ownership
@@ -196,6 +199,7 @@ final class ControlEngine {
         case .legacyTahoe: detectedFamily = .legacyTahoe
         case .none: detectedFamily = .none
         }
+        detectedSMCFamily = detectedFamily
         firmwareProfileTier = FirmwareProfileLibrary.classify(
             identity: identity,
             detectedFamily: detectedFamily,
@@ -815,6 +819,41 @@ final class ControlEngine {
         locked {
             store.update { $0.calibration = nil }
             tickNow(reason: .userRequest)
+        }
+    }
+
+    /// Validate and install a new compatibility database, atomically and
+    /// in-process. Called only from the daemon's XPC handler (the file is
+    /// root-owned; this is its only writer). On any validation failure
+    /// nothing is written and the error is reported to the caller verbatim.
+    func installCompatibilityDatabase(
+        _ payload: FirmwareProfileLibrary.DatabasePayload
+    ) throws -> CompatibilityDatabaseInstaller.InstallResult {
+        try locked {
+            let result = try CompatibilityDatabaseInstaller.install(
+                payload,
+                toPath: BatteryXPC.compatibilityDatabasePath
+            )
+            // The new profiles change classification inputs (tier can move
+            // between verified/compatibleByCapability). Re-classify now so
+            // status reads never disagree with the just-installed evidence.
+            if let identity = platformIdentity {
+                firmwareProfileTier = FirmwareProfileLibrary.classify(
+                    identity: identity,
+                    detectedFamily: detectedSMCFamily,
+                    systemFirmwareBuild: identity.systemFirmwareBuild
+                )
+                firmwareProfileSummary = FirmwareProfileLibrary.summary(
+                    for: firmwareProfileTier,
+                    identity: identity,
+                    detectedFamily: detectedSMCFamily
+                )
+            }
+            DaemonLog.info(
+                "Compatibility database installed: \(result.acceptedProfiles) profile(s), \(result.totalProfiles) total active.",
+                operation: "database"
+            )
+            return result
         }
     }
 

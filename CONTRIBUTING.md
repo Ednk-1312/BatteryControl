@@ -24,11 +24,16 @@ name. It probes the SMC at runtime and classifies your firmware into a tier:
 ### 1. Export your report (read-only, safe)
 
 ```sh
-sudo /Library/PrivilegedHelperTools/com.batterycontrol.daemon --export-compat-report ~/Desktop/bc-compat-report.json
+batterycontrol compatibility --report
 ```
 
-(If the helper is not installed, you can run the same flag from a debug build of the
-daemon binary.)
+or, in the app: **Diagnostics → Export Compatibility Report…** Both talk to the
+daemon over XPC. If the daemon is not installed, you can run the original one-shot
+flag from the daemon binary itself:
+
+```sh
+sudo /Library/PrivilegedHelperTools/com.batterycontrol.daemon --export-compat-report ~/Desktop/bc-compat-report.json
+```
 
 The export is **read-only** — it performs SMC reads only and never writes.
 
@@ -51,8 +56,8 @@ make the report useful.
 
 ### 3. Submit
 
-Open a GitHub issue titled `Compatibility report: <model> <firmware>` and paste the
-JSON (or attach it). Maintainers will:
+Open a GitHub issue with the **Compatibility report** template and paste the JSON —
+the template's fields match the report, so it lands ready to review. Maintainers will:
 
 1. Add your machine to the database as **COMPATIBLE** (signature matches a known family).
 2. If you volunteer for a supervised verification session (a controlled charge-limit

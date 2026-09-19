@@ -385,6 +385,35 @@ enum SMCChargeControl {
         }
     }
 
+    /// The machine's SMC control-key signature for compatibility reporting:
+    /// every known control key mapped to "present:<4-byte hex>" (first four
+    /// raw bytes, showing live vs zero state) or "absent". The keys are
+    /// control keys only — no battery telemetry, no identifiers. Callers
+    /// must hold an open SMC connection (serialized by SMC's own lock).
+    static func capabilitySignature() -> [String: String] {
+        func line(_ name: String, _ key: FourCharCode) -> String {
+            guard keyUsable(key) else { return "absent" }
+            let bytes = (try? SMC.readBytes(key))
+                ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            let hex = [bytes.0, bytes.1, bytes.2, bytes.3]
+                .map { String(format: "%02x", $0) }
+                .joined()
+            return "present:\(hex)"
+        }
+        return [
+            "CH0B": line("CH0B", inhibitB),
+            "CH0C": line("CH0C", inhibitC),
+            "CHTE": line("CHTE", inhibitT),
+            "CH0I": line("CH0I", adapterDisable),
+            "CH0J": line("CH0J", adapterJ),
+            "CHIE": line("CHIE", adapterE),
+            "bfF0": line("bfF0", FirmwareLimitKeys.activation),
+            "bfD0": line("bfD0", FirmwareLimitKeys.upper),
+            "bfE0": line("bfE0", FirmwareLimitKeys.lower),
+        ]
+    }
+
     /// Detect which control family this firmware exposes. Firmware limit
     /// wins over legacy keys when both are present (the firmware mechanism
     /// is enforced by the SMC itself and is strictly more capable).

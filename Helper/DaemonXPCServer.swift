@@ -239,6 +239,53 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
         reply(XPCEnvelope.encode(engine.diagnostics(), kind: XPCEnvelope.kindDiagnostics))
     }
 
+    /// Machine-evidence compatibility report for the community database.
+    /// Read-only: never touches a control key, never writes anything.
+    func exportCompatibilityReport(withReply reply: @escaping (XPCEnvelope?) -> Void) {
+        let identity = PlatformDetector.detect()
+        let signature = SMCChargeControl.capabilitySignature()
+        let report = CompatibilityReportBuilder.build(
+            identity: identity,
+            tier: engine.firmwareProfileTier,
+            detectedFamily: engine.detectedSMCFamily,
+            smcSignature: signature
+        )
+        DaemonLog.info("Compatibility report generated (family \(report.detectedControlFamily), tier \(report.firmwareProfileTier)).", operation: "database")
+        reply(XPCEnvelope.encode(report, kind: XPCEnvelope.kindCompatibilityReport))
+    }
+
+    /// Install a community compatibility database. The daemon is the only
+    /// writer of the root-owned file; every step here is validated before
+    /// anything touches disk, and classification never bypasses the runtime
+    /// capability probe.
+    func installCompatibilityDatabase(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void) {
+        guard let request = envelope.decode(InstallDatabaseRequest.self, expectingKind: XPCEnvelope.kindDatabaseInstall) else {
+            reply(ack(false, "Malformed database install request."))
+            return
+        }
+        do {
+            let result = try engine.installCompatibilityDatabase(request.databasePayload)
+            reply(XPCEnvelope.encode(
+                DatabaseInstallResult(
+                    acceptedProfiles: result.acceptedProfiles,
+                    totalProfiles: result.totalProfiles,
+                    installedPath: result.installedPath
+                ),
+                kind: XPCEnvelope.kindCompatibilityReport
+            ))
+        } catch let error as CompatibilityDatabaseInstaller.InstallError {
+            if case .databaseInvalid(let reason) = error {
+                DaemonLog.warning("Database install rejected: \(reason).", operation: "database")
+                reply(ack(false, "Database rejected: \(reason)"))
+            } else {
+                reply(ack(false, "Database rejected."))
+            }
+        } catch {
+            DaemonLog.warning("Database install failed: \(error).", operation: "database")
+            reply(ack(false, "The database could not be written: \(error)"))
+        }
+    }
+
     private func ack(_ accepted: Bool, _ message: String) -> XPCEnvelope {
         XPCEnvelope.encode(OperationAck(accepted: accepted, message: message), kind: XPCEnvelope.kindAck)
             ?? XPCEnvelope(kind: XPCEnvelope.kindError, payload: Data())

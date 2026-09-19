@@ -41,7 +41,7 @@ public enum BatteryXPC {
     /// protocol or control logic changes incompatibly; a mismatch is reported
     /// as `HelperStatus.outdated` and offers the repair flow. Kept in sync
     /// with the release artifact version (`scripts/build-release.sh <ver>`).
-    public static let expectedHelperVersion = "1.0.2"
+    public static let expectedHelperVersion = "1.1.0"
 }
 
 /// Root XPC message envelope. One struct per operation keeps the protocol
@@ -175,5 +175,39 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
         self.firmwareProfileTier = firmwareProfileTier
         self.firmwareProfileSummary = firmwareProfileSummary
         self.nativeChargeLimit = nativeChargeLimit
+    }
+}
+
+/// Request to install a new compatibility database. The JSON payload rides
+/// inside the envelope; the daemon validates it completely before anything
+/// touches disk. Clients have no other path to this file.
+public struct InstallDatabaseRequest: Codable, Equatable, Sendable {
+    /// Schema version the payload claims; must match the daemon's.
+    public var schemaVersion: Int
+    /// Profiles to install (replaces any previously installed database).
+    public var profiles: [FirmwareProfile]
+
+    public init(schemaVersion: Int, profiles: [FirmwareProfile]) {
+        self.schemaVersion = schemaVersion
+        self.profiles = profiles
+    }
+
+    /// The payload the daemon-side installer validates and activates.
+    public var databasePayload: FirmwareProfileLibrary.DatabasePayload {
+        FirmwareProfileLibrary.DatabasePayload(schemaVersion: schemaVersion, profiles: profiles)
+    }
+}
+
+/// Result of a successful database install (decoded from `OperationAck`
+/// context; carried as its own envelope kind so the CLI can print specifics).
+public struct DatabaseInstallResult: Codable, Equatable, Sendable {
+    public var acceptedProfiles: Int
+    public var totalProfiles: Int
+    public var installedPath: String
+
+    public init(acceptedProfiles: Int, totalProfiles: Int, installedPath: String) {
+        self.acceptedProfiles = acceptedProfiles
+        self.totalProfiles = totalProfiles
+        self.installedPath = installedPath
     }
 }

@@ -420,16 +420,6 @@ private func runSMCDiagnostics() -> Int32 {
 /// numbers, hardware UUIDs, user names, or paths. Read-only: never writes
 /// to the SMC.
 private func runExportCompatReport(_ args: [String]) -> Int32 {
-    struct CompatReport: Codable {
-        var reportVersion: Int
-        var generatedAt: String
-        var hardware: [String: String]
-        var smcCapabilitySignature: [String: String]
-        var detectedControlFamily: String
-        var firmwareProfileTier: String
-        var profileNotes: [String]
-    }
-
     print("Machine: \(PlatformDetector.detect().summaryLine)")
     do {
         try SMC.open()
@@ -440,29 +430,6 @@ private func runExportCompatReport(_ args: [String]) -> Int32 {
     defer { SMC.close() }
 
     let identity = PlatformDetector.detect()
-    func keyLine(_ name: String, _ key: FourCharCode) -> String {
-        if SMCChargeControl.keyUsable(key) {
-            let bytes = (try? SMC.readBytes(key)) ?? (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-            let hex = [bytes.0, bytes.1, bytes.2, bytes.3].map { String(format: "%02x", $0) }.joined()
-            return "present:\(hex)"
-            // Note: the raw 4 bytes of battery-TELEMETRY keys are not
-            // identifiers; the exported keys are control keys only, and the
-            // hex is included only to show live vs zero state.
-        }
-        return "absent"
-    }
-    let signature: [String: String] = [
-        "CH0B": keyLine("CH0B", SMCChargeControl.inhibitB),
-        "CH0C": keyLine("CH0C", SMCChargeControl.inhibitC),
-        "CHTE": keyLine("CHTE", SMCChargeControl.inhibitT),
-        "CH0I": keyLine("CH0I", SMCChargeControl.adapterDisable),
-        "CH0J": keyLine("CH0J", SMCChargeControl.adapterJ),
-        "CHIE": keyLine("CHIE", SMCChargeControl.adapterE),
-        "bfF0": keyLine("bfF0", FirmwareLimitKeys.activation),
-        "bfD0": keyLine("bfD0", FirmwareLimitKeys.upper),
-        "bfE0": keyLine("bfE0", FirmwareLimitKeys.lower),
-    ]
-
     let detected: FirmwareProfileLibrary.DetectedFamily
     switch SMCChargeControl.detectFamily() {
     case .firmwareLimit: detected = .firmwareLimit
@@ -475,36 +442,13 @@ private func runExportCompatReport(_ args: [String]) -> Int32 {
         detectedFamily: detected,
         systemFirmwareBuild: identity.systemFirmwareBuild
     )
-    let detectedFamilyName: String
-    switch detected {
-    case .firmwareLimit: detectedFamilyName = "firmwareLimit"
-    case .legacy: detectedFamilyName = "legacy"
-    case .legacyTahoe: detectedFamilyName = "legacyTahoe"
-    case .none: detectedFamilyName = "none"
-    }
-
-    let report = CompatReport(
-        reportVersion: 1,
-        generatedAt: ISO8601DateFormatter().string(from: Date()),
-        hardware: [
-            "chip": identity.chipGeneration?.rawValue ?? "unknown",
-            "modelIdentifier": identity.macModelIdentifier,
-            "osVersion": "\(identity.osMajor).\(identity.osMinor).\(identity.osPatch)",
-            "osBuild": identity.osBuild,
-            "systemFirmwareBuild": identity.systemFirmwareBuild ?? "unknown",
-        ],
-        smcCapabilitySignature: signature,
-        detectedControlFamily: String(describing: detected),
-        firmwareProfileTier: tier.rawValue,
-        profileNotes: FirmwareProfileLibrary.all
-            .filter { $0.controlFamily == detectedFamilyName }
-            .map { $0.id },
+    let report = CompatibilityReportBuilder.build(
+        identity: identity,
+        tier: tier,
+        detectedFamily: detected,
+        smcSignature: SMCChargeControl.capabilitySignature()
     )
-
-    // Serialize with sorted keys for diffability.
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    guard let data = try? encoder.encode(report) else {
+    guard let data = try? report.jsonData() else {
         print("FAILED to serialize the report.")
         return 1
     }
