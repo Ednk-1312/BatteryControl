@@ -14,6 +14,12 @@ public enum BatteryXPC {
     /// Helper bundle identifier. Also the launchd label.
     public static let helperBundleID = "com.batterycontrol.daemon"
 
+    /// GUI app bundle identifier. The daemon only accepts clients that are
+    /// part of this app (same signing team, or same-bundle for ad-hoc
+    /// builds); the classifier uses it to recognize a stale BatteryControl
+    /// GUI after an in-place upgrade.
+    public static let appBundleID = "com.batterycontrol.app"
+
     /// Helper install location (the conventional PrivilegedHelperTools dir).
     public static let helperInstallPath = "/Library/PrivilegedHelperTools/com.batterycontrol.daemon"
 
@@ -35,7 +41,7 @@ public enum BatteryXPC {
     /// protocol or control logic changes incompatibly; a mismatch is reported
     /// as `HelperStatus.outdated` and offers the repair flow. Kept in sync
     /// with the release artifact version (`scripts/build-release.sh <ver>`).
-    public static let expectedHelperVersion = "1.0.1"
+    public static let expectedHelperVersion = "1.0.2"
 }
 
 /// Root XPC message envelope. One struct per operation keeps the protocol

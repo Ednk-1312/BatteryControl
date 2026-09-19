@@ -36,6 +36,8 @@ public enum BatteryControlCLI {
         case dischargeStatus
         case dischargeStart(target: Int, floor: Int?, belowFloorConsent: Bool)
         case dischargeStop
+        case chargeStart(target: Int?)
+        case chargeStop
         case diagnostics
         case compatibility
         case version
@@ -101,6 +103,20 @@ public enum BatteryControlCLI {
                 return try parseDischargeStart(rest)
             default:
                 throw UsageError("unknown 'discharge' subcommand '\(sub)' — expected status, start, or stop")
+            }
+
+        case "charge":
+            guard let sub = rest.first else {
+                throw UsageError("missing subcommand: expected 'charge start [pct]' or 'charge stop'")
+            }
+            rest.removeFirst()
+            switch sub {
+            case "stop":
+                return .chargeStop
+            case "start":
+                return try parseChargeStart(rest)
+            default:
+                throw UsageError("unknown 'charge' subcommand '\(sub)' — expected start or stop")
             }
 
         case "diagnostics":
@@ -181,6 +197,21 @@ public enum BatteryControlCLI {
         return .dischargeStart(target: positional[0], floor: floor, belowFloorConsent: consent)
     }
 
+    /// `charge start [pct]` — the target is optional and defaults to 100.
+    /// Bounds are the daemon's job, as everywhere else.
+    private static func parseChargeStart(_ args: [String]) throws -> Command {
+        guard args.count <= 1 else {
+            throw UsageError("charge start expects at most one percentage, e.g. 'charge start 90'")
+        }
+        guard let target = args.first else {
+            return .chargeStart(target: nil)
+        }
+        guard let value = Int(target) else {
+            throw UsageError("unexpected argument '\(target)' — charge start expects a percentage")
+        }
+        return .chargeStart(target: value)
+    }
+
     // MARK: - Help
 
     public static let helpText: String = """
@@ -199,6 +230,8 @@ public enum BatteryControlCLI {
         --floor <pct>                 Custom stop floor (default 20%)
         --allow-below-floor           DANGEROUS: allows draining below 20%
       discharge stop                  Stop an active discharge
+      charge start [pct]              Charge past the limit to <pct> (default 100)
+      charge stop                     Stop a force-charge and restore the limit
       diagnostics                     Full control/backend/verification report
       compatibility                   Hardware + firmware compatibility tier
       version                         Print the CLI and daemon versions

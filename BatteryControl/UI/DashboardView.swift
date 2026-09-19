@@ -9,6 +9,7 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                staleProcessBanner
                 daemonUnavailableBanner
                 statusRow
                 banners
@@ -19,12 +20,39 @@ struct DashboardView: View {
         }
     }
 
+    /// Shown when this GUI process predates the installed app bundle: the
+    /// daemon keeps refusing its connections after an in-place upgrade, so
+    /// no amount of waiting will restore control. Offer the relaunch.
+    @ViewBuilder
+    private var staleProcessBanner: some View {
+        if appState.isStaleProcess {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .foregroundStyle(.blue)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("BatteryControl was updated while it was running")
+                        .font(.headline)
+                    Text("Reopen the app to reconnect to the privileged daemon. Charging control continues meanwhile under the saved settings.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Reopen") { appState.relaunchApp() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding(12)
+            .background(.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
     /// State-matrix row "daemon unavailable": an explicit banner instead of
     /// silently keeping stale values — and the control tile reads
     /// "Unavailable", never "Verified" (enforced by DashboardSummary).
     @ViewBuilder
     private var daemonUnavailableBanner: some View {
-        if appState.snapshot == nil {
+        // Superseded by staleProcessBanner when the process itself is stale:
+        // there is no "reconnect automatically" to wait for.
+        if appState.snapshot == nil && !appState.isStaleProcess {
             HStack(spacing: 10) {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.orange)

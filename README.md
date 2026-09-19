@@ -151,6 +151,9 @@ batterycontrol limit off                  # hand charging back to macOS
 batterycontrol discharge status           # force-discharge session state
 batterycontrol discharge start 60         # run on battery down to 60% while on AC
 batterycontrol discharge stop             # end the discharge, restore adapter input
+batterycontrol charge start               # charge past the limit to 100%
+batterycontrol charge start 90            # charge past the limit to 90%
+batterycontrol charge stop                # end a force-charge, restore the limit
 batterycontrol diagnostics                # full control/backend/verification report
 batterycontrol compatibility              # which control mechanisms this Mac supports
 batterycontrol version                    # CLI and daemon versions
@@ -279,7 +282,7 @@ xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl \
     -destination 'platform=macOS' test
 ```
 
-207 tests in `Tests/BatteryCoreTests`: policy engine, backend selection, verification,
+244 tests in `Tests/BatteryCoreTests`: policy engine, backend selection, verification,
 firmware-limit semantics, calibration, CLI parsing, XPC envelopes, the platform gate,
 portability, and the failure paths (wrong key width, readback mismatch, activation that
 doesn't stick, unknown signatures). The control logic that matters lives in `BatteryCore`
@@ -327,6 +330,15 @@ you installed the CLI edition). Leftovers, all safe to remove:
 - **Dashboard shows unavailable.** The app can't reach the daemon. It won't claim
   anything is enforced while it can't verify — that's on purpose. Fix the daemon and
   the dashboard catches up.
+- **App says it was "updated while it was running" (blue banner).** The app was
+  upgraded in place while it was open, so the daemon refuses its connections until
+  it's relaunched — one click on **Reopen** fixes it. This is the signature check
+  doing its job, not a bug.
+- **"Pending verification" takes a minute or two.** Real hardware doesn't switch
+  instantly: when the firmware pauses an active charge, the current tapers over up
+  to ~2 minutes before macOS reports the change, and charging up takes a similar
+  moment to ramp. The status stays honest meanwhile — it does not show "Verified"
+  until the battery state actually confirms the change.
 - **A limit is set but "hardware verified" is missing.** The daemon couldn't confirm
   the hardware state (common right after wake). It retries on its tick. If it doesn't
   clear, look at `batterycontrol diagnostics`.

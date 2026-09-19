@@ -1,3 +1,4 @@
+import AppKit
 import BatteryCore
 import Combine
 import Foundation
@@ -59,6 +60,12 @@ final class AppState: ObservableObject {
     @Published var installProgress: String?
     @Published var isInstalling = false
 
+    /// Set at launch: this process predates the app bundle now on disk (an
+    /// in-place upgrade happened while it ran). The daemon will keep
+    /// rejecting this process's XPC connections — the UI must offer a
+    /// relaunch instead of promising an automatic reconnect.
+    @Published private(set) var isStaleProcess = false
+
     /// From the setup flow: whether first-run setup completed.
     @Published var setupComplete: Bool = UserDefaults.standard.bool(forKey: "setupComplete")
 
@@ -68,6 +75,7 @@ final class AppState: ObservableObject {
 
     init() {
         platform = PlatformDetector.detect()
+        isStaleProcess = Self.detectStaleProcess()
         // Registration-only status: never blocks the main thread on XPC
         // (the blocking probe previously stalled launch up to ~3s when the
         // daemon was absent). The first poll fills in the live state.
@@ -81,6 +89,34 @@ final class AppState: ObservableObject {
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             Task { await self?.poll() }
         }
+    }
+
+    /// Client-side facts for the staleness check: this process's start time
+    /// and the installed bundle's creation time. The decision itself is
+    /// `XPCRejectionClassifier.isProcessStaleAfterUpgrade` (unit-tested).
+    private static func detectStaleProcess() -> Bool {
+        var kinfo = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        guard sysctl(&mib, 4, &kinfo, &size, nil, 0) == 0 else { return false }
+        let tv = kinfo.kp_proc.p_starttime
+        let processStart = Date(timeIntervalSince1970: TimeInterval(tv.tv_sec) + TimeInterval(tv.tv_usec) / 1_000_000)
+        let attrs = try? FileManager.default.attributesOfItem(atPath: Bundle.main.bundlePath)
+        let created = attrs?[.creationDate] as? Date
+        return XPCRejectionClassifier.isProcessStaleAfterUpgrade(
+            runningProcessStart: processStart,
+            bundleInstallTime: created
+        )
+    }
+
+    /// One-click recovery from the stale-process state: start the freshly
+    /// installed bundle and exit the stale process.
+    func relaunchApp() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = ["-n", Bundle.main.bundlePath]
+        try? process.run()
+        NSApp.terminate(nil)
     }
 
     // MARK: Derived state for the UI

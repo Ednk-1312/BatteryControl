@@ -105,8 +105,27 @@ extension DaemonXPCServer: NSXPCListenerDelegate {
         shouldAcceptNewConnection newConnection: NSXPCConnection
     ) -> Bool {
         guard shouldAccept(connection: newConnection) else {
+            // Log WHY the client was refused. The classification never alters
+            // the decision — rejection behavior is unchanged — but repeated
+            // "Rejected" lines with no reason left upgrade-in-place sessions
+            // (stale GUI) indistinguishable from attacks.
+            let clientInfo = signingInfo(ofPID: newConnection.processIdentifier)
+            let rejection = XPCRejectionClassifier.classify(
+                clientPath: clientInfo?["path"] as? String,
+                clientBundleID: clientInfo?[kSecCodeInfoIdentifier as String] as? String,
+                expectedBundleID: BatteryXPC.appBundleID
+            )
+            let reasonText: String
+            switch rejection {
+            case .staleClientAfterUpgrade:
+                reasonText = "stale client (app updated while running; relaunch the app)"
+            case .foreignClient:
+                reasonText = "not a BatteryControl app component"
+            case .uninspectable:
+                reasonText = "client signature could not be inspected"
+            }
             DaemonLog.warning(
-                "Rejected XPC connection from pid \(newConnection.processIdentifier)",
+                "Rejected XPC connection from pid \(newConnection.processIdentifier): \(reasonText)",
                 operation: "xpc"
             )
             return false

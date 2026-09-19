@@ -472,12 +472,13 @@ final class FirmwareLimitBackend: ChargingBackend, ChargingPolicyConfigurable {
             // recharging afterwards.
             return .success(())
         case .forceCharge(let target):
-            // A force-charge target near 100% must clear the firmware limit,
-            // otherwise the firmware would stop the charge below 100%.
-            if target > 100 - FirmwareLimitValidation.minimumLimitGap {
+            // Deactivate whenever the target exceeds the user's upper limit
+            // (including 100%): a programmed band would stop the charge
+            // below the target. At or below the limit, keep the band so a
+            // "top up to my limit" request charges straight to it.
+            if target > policy.upperLimit {
                 return deactivate()
             }
-            // Charging toward a target within the limit: keep the limit.
             return programLimit(upper: policy.upperLimit, lower: policy.effectiveLowerLimit)
         case .none:
             break

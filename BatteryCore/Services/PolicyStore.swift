@@ -1,46 +1,42 @@
-import BatteryCore
 import Foundation
+import os
 
 /// Persists the desired policy (and any override) in a root-owned JSON file
 /// so the charging policy survives daemon restarts and reboots. The main app
 /// never writes this file — it goes through XPC.
-final class PolicyStore {
+public final class PolicyStore {
 
-    struct StoredState: Codable, Equatable {
-        var policy: ChargingPolicy
-        var override: PolicyOverride
-        var calibration: CalibrationSession?
-        var updatedAt: Date
+    public struct StoredState: Codable, Equatable {
+        public var policy: ChargingPolicy
+        public var override: PolicyOverride
+        public var calibration: CalibrationSession?
+        public var updatedAt: Date
     }
 
-    private let path = BatteryXPC.helperConfigPath
-    private let queue = DispatchQueue(label: "com.batterycontrol.daemon.store")
+    /// The production store path. Tests inject their own (temp directory) so
+    /// persistence behavior can be exercised without root.
+    public convenience init() {
+        self.init(path: BatteryXPC.helperConfigPath)
+    }
 
-    private var cached: StoredState
-    /// Modification date of the file `cached` was loaded from. The file is
-    /// also written by recovery tooling (the daemon CLI) while the daemon
-    /// runs, so `state` re-reads it whenever the mtime changes — otherwise
-    /// an externally persisted policy would never reach the live engine.
-    private var cachedMtime: Date?
-
-    init() {
-        if let loaded = PolicyStore.load(from: BatteryXPC.helperConfigPath) {
+    public init(path: String) {
+        self.path = path
+        if let loaded = PolicyStore.load(from: path) {
             cached = loaded
-            cachedMtime = PolicyStore.modificationDate(of: BatteryXPC.helperConfigPath)
+            cachedMtime = PolicyStore.modificationDate(of: path)
         } else {
-            if FileManager.default.fileExists(atPath: BatteryXPC.helperConfigPath) {
+            if FileManager.default.fileExists(atPath: path) {
                 // A store that exists but does not decode is quarantined
                 // (never silently overwritten) so a corrupt file can be
                 // inspected later. With atomic saves below this should not
                 // happen; the old non-atomic writer could produce it.
-                let quarantine = "\(BatteryXPC.helperConfigPath).corrupt-\(Int(Date().timeIntervalSince1970))"
+                let quarantine = "\(path).corrupt-\(Int(Date().timeIntervalSince1970))"
                 _ = try? FileManager.default.moveItem(
-                    atPath: BatteryXPC.helperConfigPath,
+                    atPath: path,
                     toPath: quarantine
                 )
-                DaemonLog.error(
-                    "Policy store was unreadable and has been quarantined to \(quarantine); starting from defaults.",
-                    operation: "startup"
+                Logger(subsystem: "com.batterycontrol.daemon", category: "control").error(
+                    "Policy store was unreadable and has been quarantined to \(quarantine, privacy: .public); starting from defaults."
                 )
             }
             cached = StoredState(
@@ -52,7 +48,17 @@ final class PolicyStore {
         }
     }
 
-    var state: StoredState {
+    private let path: String
+    private let queue = DispatchQueue(label: "com.batterycontrol.daemon.store")
+
+    private var cached: StoredState
+    /// Modification date of the file `cached` was loaded from. The file is
+    /// also written by recovery tooling (the daemon CLI) while the daemon
+    /// runs, so `state` re-reads it whenever the mtime changes — otherwise
+    /// an externally persisted policy would never reach the live engine.
+    private var cachedMtime: Date?
+
+    public var state: StoredState {
         queue.sync {
             reloadFromDiskIfChanged()
             return cached
@@ -72,7 +78,7 @@ final class PolicyStore {
         (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
     }
 
-    func update(_ mutate: (inout StoredState) -> Void) {
+    public func update(_ mutate: (inout StoredState) -> Void) {
         queue.sync {
             mutate(&cached)
             cached.updatedAt = Date()

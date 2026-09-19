@@ -55,6 +55,23 @@ final class CLICommandTests: XCTestCase {
         )
     }
 
+    func testParseChargeStartAndStop() throws {
+        XCTAssertEqual(
+            try BatteryControlCLI.parse(["charge", "start"]),
+            .chargeStart(target: nil),
+            "No target defaults to 100 at the runner"
+        )
+        XCTAssertEqual(
+            try BatteryControlCLI.parse(["charge", "start", "90"]),
+            .chargeStart(target: 90)
+        )
+        XCTAssertEqual(try BatteryControlCLI.parse(["charge", "stop"]), .chargeStop)
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["charge"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["charge", "start", "90", "80"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["charge", "start", "abc"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["charge", "restart"]))
+    }
+
     func testParseDischargeStop() throws {
         XCTAssertEqual(try BatteryControlCLI.parse(["discharge", "stop"]), .dischargeStop)
     }

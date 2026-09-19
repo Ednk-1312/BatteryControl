@@ -127,8 +127,31 @@ final class FirmwareLimitValidationTests: XCTestCase {
             FirmwareLimitValidation.requestedLimit(policy: policy, override: .forceCharge(targetPercent: 100)),
             "A force-charge to 100% must clear the firmware limit"
         )
+        XCTAssertNil(
+            FirmwareLimitValidation.requestedLimit(policy: policy, override: .forceCharge(targetPercent: 85)),
+            "A force-charge target above the user's limit (80) must clear the limit, not stall at the band"
+        )
         XCTAssertNotNil(
-            FirmwareLimitValidation.requestedLimit(policy: policy, override: .forceCharge(targetPercent: 85))
+            FirmwareLimitValidation.requestedLimit(policy: policy, override: .forceCharge(targetPercent: 75)),
+            "A force-charge at/below the user's limit tops up to the existing band"
+        )
+    }
+
+    func testForceChargeAtExactLimitKeepsBand() {
+        let policy = ChargingPolicy(mode: .hysteresis, upperLimit: 80, lowerLimit: 70)
+        XCTAssertNotNil(
+            FirmwareLimitValidation.requestedLimit(policy: policy, override: .forceCharge(targetPercent: 80)),
+            "A force-charge target equal to the upper limit stays within the band"
+        )
+        // Custom low policy: the boundary must follow the policy, not a
+        // hard-coded 80/100.
+        let lowPolicy = ChargingPolicy(mode: .hysteresis, upperLimit: 60, lowerLimit: 50)
+        XCTAssertNil(
+            FirmwareLimitValidation.requestedLimit(policy: lowPolicy, override: .forceCharge(targetPercent: 75)),
+            "Force-charge 75 over a 60-limit policy must clear the band"
+        )
+        XCTAssertNotNil(
+            FirmwareLimitValidation.requestedLimit(policy: lowPolicy, override: .forceCharge(targetPercent: 60))
         )
     }
 
@@ -228,7 +251,17 @@ final class VerificationTests: XCTestCase {
     }
 
     func testRetryIsBounded() {
-        XCTAssertLessThanOrEqual(VerificationLogic.maxAttempts, 5, "No endless retry loops")
+        // Bounded (no endless loops) AND long enough to observe a real
+        // firmware taper when pausing an active charge (~2 min measured on
+        // the verified M3 profile). Both properties are pinned: shrinking
+        // the window reintroduces false "NOT verified" alarms, growing it
+        // unboundedly would mask real failures.
+        XCTAssertLessThanOrEqual(VerificationLogic.maxAttempts, 12, "No endless retry loops")
+        XCTAssertGreaterThanOrEqual(
+            TimeInterval(VerificationLogic.maxAttempts) * VerificationLogic.attemptDelaySeconds,
+            VerificationLogic.minimumObservationWindowSeconds,
+            "Verification window must cover measured firmware latency"
+        )
         let now = Date()
         XCTAssertFalse(
             VerificationLogic.shouldRetry(attemptNumber: VerificationLogic.maxAttempts, verdict: .pending, now: now, lastAttemptTime: nil),

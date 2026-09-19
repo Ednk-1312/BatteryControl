@@ -35,6 +35,10 @@ public enum CLIRunner {
             return await dischargeStart(target: target, floor: floor, consent: consent)
         case .dischargeStop:
             return await dischargeStop()
+        case .chargeStart(let target):
+            return await chargeStart(target: target)
+        case .chargeStop:
+            return await chargeStop()
         case .diagnostics:
             return await diagnostics()
         case .compatibility:
@@ -165,6 +169,34 @@ public enum CLIRunner {
     }
 
     private static func dischargeStop() async -> (String, BatteryControlCLI.ExitCode) {
+        guard let ack = await DaemonXPCClient.shared.cancelOverrides() else {
+            return (communicationFailure(), .communicationFailure)
+        }
+        return (renderAck(ack), .success)
+    }
+
+    // MARK: - Force charge
+
+    private static func chargeStart(target: Int?) async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available(let response):
+            guard response.snapshot.capabilities.supportsForceCharge else {
+                return (safetyRejection(response, reason:
+                    "The active backend on this machine cannot verify force charge, " +
+                    "so the command is refused rather than pretending to work."), .safetyRejection)
+            }
+            let effectiveTarget = target ?? 100
+            guard let ack = await DaemonXPCClient.shared.startForceCharge(targetPercent: effectiveTarget) else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            return (renderAck(ack), ack.accepted ? .success : .safetyRejection)
+        }
+    }
+
+    private static func chargeStop() async -> (String, BatteryControlCLI.ExitCode) {
         guard let ack = await DaemonXPCClient.shared.cancelOverrides() else {
             return (communicationFailure(), .communicationFailure)
         }

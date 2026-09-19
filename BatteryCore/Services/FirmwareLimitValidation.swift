@@ -34,9 +34,13 @@ public enum FirmwareLimitValidation {
     public static func requestedLimit(policy: ChargingPolicy, override: PolicyOverride) -> (upper: Int, lower: Int)? {
         switch override {
         case .forceCharge(let target):
-            // Above the programable ceiling the firmware limit must be
-            // deactivated so the charge can complete.
-            return target > 100 - minimumLimitGap ? nil : (upper: policy.upperLimit, lower: policy.effectiveLowerLimit)
+            // The limit must come out of the way whenever the target is
+            // above the user's upper limit — a band programmed at the
+            // policy limit would stop the charge below the target and
+            // leave the override latched forever. Targets at or below the
+            // upper limit simply charge to the band ("top me up to my
+            // limit now"), so the limit stays programmed.
+            return target > policy.upperLimit ? nil : (upper: policy.upperLimit, lower: policy.effectiveLowerLimit)
         case .forceDischarge:
             // Discharge rides the adapter cut; keep the last limit active so
             // the band still governs recharging.

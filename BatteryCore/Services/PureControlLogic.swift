@@ -165,10 +165,24 @@ public enum VerificationLogic {
 
     /// Total attempts before reporting failure. Bounded on purpose: no
     /// endless retry loops.
-    public static let maxAttempts = 3
+    ///
+    /// The budget must cover real hardware latency, not just SMC latency:
+    /// when the firmware pauses an ACTIVE charge it tapers current to zero
+    /// over up to ~2 minutes before IsCharging drops (measured on the
+    /// project's physically verified profile: a 60/50 cut at ~1900 mA took
+    /// well over 60s to settle). 8 attempts × 20s = 160s of observation
+    /// before an honest failure. Verification still succeeds on the first
+    /// attempt whenever the transition is instant, so a larger budget costs
+    /// nothing in the common case — it only prevents false alarms.
+    public static let maxAttempts = 8
     /// Delay between attempts, in seconds. The gauge refreshes about once a
     /// minute, so short waits would only re-read stale state.
     public static let attemptDelaySeconds: TimeInterval = 20
+
+    /// The verification window (attempts × delay) must be long enough to
+    /// observe a real firmware taper. Pinned so tuning one constant cannot
+    /// silently reintroduce the false "NOT verified" alarms this fixed.
+    public static var minimumObservationWindowSeconds: TimeInterval { 120 }
 
     /// Is this battery level change meaningful progress for discharge
     /// verification?
