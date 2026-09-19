@@ -1,94 +1,87 @@
 # BatteryControl
 
-Reliable battery charge management for **Apple Silicon Macs (M1–M4) running macOS 15 (Sequoia)**.
+I wanted my MacBook Air to stop sitting at 100% all day, and the existing charge-limit
+tools kept failing on my M3. So I wrote my own. BatteryControl lets you set a charge
+limit on Apple Silicon Macs and actually holds it — while the app is closed, the
+menu-bar icon is hidden, the Mac is asleep, or it just woke up.
 
-BatteryControl is a native macOS app that lets you set a fixed charge limit — "keep my
-battery around 80%" — and enforces it with a small privileged daemon. It works where
-menu-bar-only utilities stop working: when the app is closed, the menu-bar icon is hidden,
-the Mac is asleep, or it has just woken up.
-
----
+It's a normal macOS app plus a `batterycontrol` command. A small privileged daemon does
+the hardware work; the app and CLI just talk to it.
 
 ## What it does
 
-- **Fixed Charge Limit** (the primary mode): pick 60/70/80/90/100% or a custom value, and
-  BatteryControl keeps charging in a hysteresis band around your limit — charging stops at
-  the upper limit and resumes at the lower limit, without micro-cycling.
-- **Force discharge**: cuts adapter input so the Mac runs on battery down to a target while
-  plugged in, with a hard 20% safety floor (lower only with explicit, session-scoped consent).
-- **Charge to 100%**: a one-time override that bypasses the limit, then restores it.
-- **Gauge calibration**: a guided full-cycle battery-gauge refresh with safety aborts.
-- **Diagnostics**: full control/backend/verification report, compatibility tier, and an
-  anonymized hardware report you can submit to grow the compatibility database.
-
-Everything runs through **one privileged daemon**; the GUI and the CLI are both just
-clients of it.
+- **Charge limit.** Pick 60/70/80/90/100% or a custom value. Charging stops at your
+  limit and resumes at a lower limit (default: 2 points below). No micro-cycling.
+- **Force discharge.** Cuts adapter input so the Mac runs on battery down to a target
+  while plugged in. Stops at the target, at the 20% floor, on unplug, and before sleep.
+- **Charge to 100%.** One-time override, then the limit comes back.
+- **Calibration.** Guided full-cycle gauge refresh. This retrains the gauge's estimate;
+  it does not repair the battery.
+- **Diagnostics.** What backend your Mac uses, whether control is verified right now,
+  and an anonymized hardware report you can submit to the compatibility database.
 
 ## Features
 
 | Feature | What it does | Honest limitations |
 |---|---|---|
-| **Fixed Charge Limit** | The primary mode: "set my Mac to 80%" — one-tap presets (60/70/80/90/100%), custom limit, configurable lower limit | Charging may overshoot by a fraction of a percent; the gauge refreshes about once a minute |
-| Lower limit | Charging resumes only after the battery falls to the lower limit (hysteresis; by default 2 points below the limit) | — |
-| Fixed target | Maintains "about 80%" using a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
-| Force discharge | Cuts adapter input so the Mac runs on battery down to a target on AC | Stops automatically at the target, at the 20% safety floor, on unplug, and before sleep; slow (~1%/5–10 min idle) |
-| Below-floor discharge (opt-in) | A red "Remove safety floor" switch allows deliberately draining below the floor for calibration or storage experiments | **Accelerates battery degradation** — the UI requires an explicit confirmation and says so; the daemon independently validates the consent flag |
-| Charge to 100% | One-time override that bypasses the limit, then restores it | Also ends on unplug |
-| Calibration | Guided full-cycle gauge refresh: discharge to 20% → charge to 100% → hold 3 hours → drop to your limit, with safety aborts | Re-trains the gauge's capacity estimate; it does **not** repair physical battery health |
-| Diagnostics | Full system/control report, backend capabilities, readable log | — |
+| Fixed Charge Limit | "Set my Mac to 80%" — presets (60/70/80/90/100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
+| Lower limit | Charging resumes only after the battery falls to it (hysteresis) | — |
+| Fixed target | Holds "about 80%" with a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
+| Force discharge | Runs on battery down to a target on AC | Slow (~1% per 5–10 min idle); auto-stops at target/floor/unplug/sleep |
+| Below-floor discharge (opt-in) | Red "Remove safety floor" switch allows draining below 20% | Wears the battery out faster. Explicit confirmation required; the daemon checks the consent itself |
+| Charge to 100% | One-time override, then restores the limit | Also ends on unplug |
+| Calibration | Discharge to 20% → charge to 100% → hold 3 hours → drop to your limit, with safety aborts | Re-trains the gauge estimate; does not fix physical battery health |
+| Diagnostics | Backend capabilities, verification state, readable log | — |
 
-## Supported platform
+## Supported Macs
 
-- **Apple Silicon Macs: M1, M2, M3, or M4** (Pro/Max/Ultra variants included)
-- **macOS 15.x (Sequoia)**
+- Apple Silicon M1, M2, M3, M4 (Pro/Max/Ultra included)
+- macOS 15.x (Sequoia)
 
-**Explicitly unsupported:** Intel Macs, M5-generation Macs, macOS 14 or earlier, macOS 26
-(Tahoe) or newer. The app detects the platform at startup and refuses to touch battery
-hardware outside the supported scope — it shows this instead:
+Intel Macs, M5-generation Macs, macOS 14 or earlier, and macOS 26 (Tahoe) or newer are
+out of scope. The app checks at startup and refuses to touch battery hardware outside
+that range — it shows this instead:
 
 > BatteryControl supports Apple Silicon Macs from M1 through M4 running macOS 15 Sequoia.
 
-(M5 Macs ship with macOS 26 and cannot boot Sequoia, so there is no meaningful M5 + macOS 15
-target. macOS 14 support may be added later; the code is structured so a scope change is a
-one-line platform-gate change plus tests.)
+(M5 Macs ship with macOS 26 and can't boot Sequoia, so there's no M5 + macOS 15 target.
+macOS 14 support may come later; the platform gate is one line plus tests.)
 
 ## Installation
 
-Two editions ship from one codebase and share the same privileged daemon:
+Two editions, same codebase, same daemon:
 
-| | **BatteryControl** (GUI + CLI) | **BatteryControl CLI** |
+| | BatteryControl (GUI + CLI) | BatteryControl CLI |
 |---|---|---|
-| Best for | Most users | Automation, scripting, SSH/headless Macs |
-| Native app + menu bar | ✓ | — |
+| Best for | Most people | Scripting, SSH, headless Macs |
+| App + menu bar | ✓ | — |
 | `batterycontrol` command | ✓ | ✓ |
-| Privileged daemon | ✓ (installed by the app's setup flow) | uses the daemon if present, read-only status otherwise |
+| Privileged daemon | installed by the app's setup flow | uses the daemon if present, read-only status otherwise |
 | Package | `BatteryControl-<version>.pkg` | `BatteryControlCLI-<version>.pkg` |
 
-### Standard install (GUI edition)
+To install the GUI edition:
 
-1. Download `BatteryControl-1.0.0.pkg` from the
-   [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest) and verify
-   it against `SHA256SUMS` if you wish.
-2. Run the installer. It places `BatteryControl.app` in `/Applications` and the
-   `batterycontrol` CLI in `/usr/local/bin`.
-3. Launch BatteryControl. It opens in **setup mode** and shows a setup banner — click
-   **Install Helper** and authorize with an administrator password when macOS asks. This
-   registers the privileged daemon via `SMAppService`; macOS shows **one** administrator
-   prompt. BatteryControl **never stores your password** and creates **no sudoers entries**.
-4. Verify the daemon: the setup banner disappears and the dashboard shows live battery
-   state. `batterycontrol status` should report `Connected`.
-5. Configure your charge limit (see [GUI usage](#gui-usage)) and confirm the dashboard
-   reports the limit as **active and hardware-verified** before trusting it.
+1. Grab `BatteryControl-1.0.0.pkg` from the
+   [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest)
+   (check it against `SHA256SUMS` if you want).
+2. Run the installer. It puts the app in `/Applications` and the CLI in `/usr/local/bin`.
+3. Launch the app. Click **Install Helper** and type your administrator password when
+   macOS asks. That's one `SMAppService` registration — one password prompt, and the
+   password is never stored. No sudoers entries.
+4. The setup banner goes away once the daemon is up. `batterycontrol status` should
+   say `Connected`.
+5. Set a limit and watch the dashboard until it says the limit is active and
+   hardware-verified.
 
-The packages are currently unsigned installers; on first launch macOS Gatekeeper may ask
-you to approve the app under System Settings → Privacy & Security. See
+The packages aren't signed installers, so Gatekeeper may ask you to approve the app
+under System Settings → Privacy & Security on first launch. See
 [Signing status](#creating-release-artifacts).
 
-## How the privileged helper/daemon works
+## How the daemon works
 
 ```
-BatteryControl.app (SwiftUI, normal window + optional menu-bar icon)
-        │  XPC (NSSecureCoding envelopes, validated DTOs)
+BatteryControl.app (SwiftUI, window + optional menu-bar icon)
+        │  XPC (secure-coded, validated objects)
         ▼
 com.batterycontrol.daemon  (root LaunchDaemon, KeepAlive)
         │  ChargingBackend protocol
@@ -100,46 +93,38 @@ Backends: Firmware-managed limit (bfF0/bfD0/bfE0 + CHIE/CH0J/CH0I discharge)
 AppleSMC (IOKit user client, root-only writes)
 ```
 
-- **The daemon is the only privileged component.** Installed to
-  `/Library/PrivilegedHelperTools/com.batterycontrol.daemon` with its launchd plist at
-  `/Library/LaunchDaemons/com.batterycontrol.daemon.plist`, it runs as root with KeepAlive
-  and enforces charging policy independently of the app.
-- **GUI and CLI can never touch hardware directly.** XPC exposes only named operations with
-  validated value objects — no raw SMC access, no generic write primitives. Connections are
-  validated (same-team code signing, or same-bundle for ad-hoc developer builds), and the
-  daemon re-validates every value at the boundary regardless of who sent it.
-- **Closing the app does not stop control.** The daemon persists policy in a root-owned JSON
-  file and re-applies it on boot, wake, power-source change, and every 20-second tick. If
-  the daemon itself is killed, launchd restarts it and it re-verifies and re-applies the
-  persisted policy automatically.
-- **Idle efficiency.** Between enforcement decisions the daemon sleeps; redundant SMC
-  maintenance traffic and idle GUI churn are gated so an enforcing machine does a small
-  periodic hardware confirmation rather than continuous polling.
+The daemon lives at `/Library/PrivilegedHelperTools/com.batterycontrol.daemon` with its
+launchd plist in `/Library/LaunchDaemons`. It runs as root and holds the policy in a
+root-owned JSON file, re-applying it on boot, wake, power-source change, and every
+20-second tick. Kill the daemon and launchd brings it back; it re-verifies and re-applies
+the persisted policy on its own.
 
-## GUI usage
+The GUI and CLI never touch hardware. XPC exposes a fixed set of named operations with
+validated objects — no raw SMC access. The daemon also re-validates every value it
+receives, and it checks who's calling (same signing team, or same bundle for ad-hoc
+developer builds).
 
-- The **dashboard** shows live battery level, power state, your charge limit, and whether
-  control is currently **verified on hardware** — it derives everything from the daemon, so
-  it never shows "active" unless the daemon can actually verify the hardware.
-- **Charging settings** offer the Fixed Charge Limit presets (60/70/80/90/100% + custom) and
-  a configurable lower limit (hysteresis). The primary interaction is one tap: "Set my Mac
-  to 80%".
-- **Discharge controls** start/stop forced discharge with the safety floor; draining below
-  the floor requires the red "Remove safety floor" switch plus an explicit confirmation.
-- **Diagnostics** shows the detected backend, compatibility tier, verification matrix, and
-  the recent daemon log. **Battery information** shows gauge/health data.
-- The app lives in the **menu bar**, not the Dock. Closing the window keeps everything
-  working; the menu-bar icon is the primary way back in. Settings → **Show menu bar icon**
-  toggles the icon (hiding it is cosmetic — the daemon keeps enforcing). If the icon is
-  hidden, launching BatteryControl again reopens the window (macOS reopen path).
-- Settings also offers **Repair Helper…** (re-runs daemon installation if it is missing or
-  outdated) and **Remove Helper…** (uninstalls the daemon and restores macOS default
-  charging).
+Closing the app changes nothing about enforcement. The menu bar is just a window into
+the daemon.
 
-## CLI usage
+## GUI
 
-The CLI is a client of the same daemon — it cannot write SMC keys directly and cannot bypass
-any safety rule. These are the actual commands:
+- Dashboard: battery level, power state, your limit, and whether control is verified on
+  hardware *right now*. If the daemon can't verify, the app says so — it doesn't show
+  "active" on faith.
+- Charging settings: the presets and the lower limit. Setting a limit is one click.
+- Discharge controls: with the safety floor. Below the floor needs the red
+  "Remove safety floor" switch plus a confirmation dialog.
+- Diagnostics: detected backend, compatibility tier, verification matrix, recent daemon log.
+- The app lives in the menu bar, not the Dock. Closing the window is fine. Settings →
+  **Show menu bar icon** hides the icon if you want — that's cosmetic, the daemon keeps
+  working. If you hide the icon, just launch BatteryControl again to get the window back.
+- **Repair Helper…** reinstalls the daemon if it's missing or outdated; **Remove
+  Helper…** uninstalls it and hands charging back to macOS.
+
+## CLI
+
+Same daemon, so same rules. The commands:
 
 ```bash
 batterycontrol status                     # battery, power, limit, verification state
@@ -156,123 +141,100 @@ batterycontrol version                    # CLI and daemon versions
 batterycontrol help                       # usage
 ```
 
-`discharge start` accepts `--floor <pct>` for a custom stop floor (default 20%) and
-`--allow-below-floor`, which permits draining below the floor (it accelerates battery
-degradation — the output says so). Consent applies to that discharge session only, and the
-daemon independently enforces the requirement even if a client tries to omit it.
+`discharge start` takes `--floor <pct>` (default 20%) and `--allow-below-floor` for
+draining below the floor. The output warns you it wears the battery out, and the daemon
+enforces the consent requirement itself — a client can't skip it.
 
-Exit codes are script-friendly: `0` success, `2` invalid arguments, `3` daemon unavailable,
-`4` unsupported hardware, `5` authorization failure, `6` safety rejection, `7` hardware
-write failure, `8` verification failure, `9` communication failure.
+Exit codes for scripting: `0` ok, `2` bad arguments, `3` daemon unavailable, `4`
+unsupported hardware, `5` authorization failure, `6` safety rejection, `7` write
+failure, `8` verification failure, `9` communication failure.
 
-## Safety model
+## Safety
 
-- **One authoritative daemon.** All privileged decisions happen in the daemon; clients
-  cannot elevate themselves and all values are re-validated at the XPC boundary.
-- **Minimal privileged surface.** XPC exposes named operations with typed, secure-coded
-  payloads only — no raw SMC reads/writes, no shell-outs, no generic write primitives.
-- **Capability detection, not assumption.** At startup the daemon probes which SMC
-  mechanisms this firmware actually exposes and selects the best verified backend. Support
-  is never inferred from macOS version or model name.
-- **Hardware readback verification.** Every write is followed by an observed state
-  transition (charging flag, external-power flag, amperage) after a settle window. An action
-  is never reported as applied just because the write was accepted; unverified attempts are
-  retried a bounded number of times, then reported honestly as not verified. On verification
-  failure the daemon deactivates the mechanism rather than leaving unknown state.
-- **Fixed-limit hysteresis.** Charging stops at the upper limit and resumes at the lower
-  limit; the band is programmed into the firmware where supported, so the SMC itself
-  enforces it even during sleep or while the daemon is stopped.
-- **Discharge safety.** The discharge floor (default 20%, hard-capped) is enforced in the
-  UI, at the XPC boundary, and again in the daemon. Adapter cuts are released on daemon
-  start, shutdown, sleep, and SMC failure, so a wedged session can never leave the Mac off
-  wall power. Below-floor draining requires explicit, session-scoped consent that expires
-  with the session and is re-checked by the daemon independently.
-- **Fail-safe defaults.** Invalid policies fail toward "normal charging"; calibration aborts
-  on battery-fault reports or floor violations; unknown firmware stays read-only.
-- **No permanent privilege.** One `SMAppService` registration at setup; no sudoers entries,
-  no stored passwords, no permanent root shells.
+The short version: the daemon never trusts a write.
 
-## Compatibility and hardware support
+- Every hardware write is read back and checked against the actual battery state
+  (charging flag, power source, amperage) after a settle window. If the hardware
+  doesn't report the expected state, BatteryControl doesn't pretend the change worked —
+  it retries a few times, then reports "not verified" and deactivates the mechanism.
+- The discharge floor is checked in the UI, at the XPC boundary, and again in the
+  daemon. Adapter cuts are released on daemon start, shutdown, sleep, and SMC failure,
+  so a crashed session can't leave your Mac off wall power. Below-floor consent only
+  lives as long as the discharge session.
+- Invalid policies fail toward "normal charging". If anything is ambiguous, the
+  default is the safe state.
+- One `SMAppService` registration, no sudoers entries, no stored passwords, no
+  permanent root shells.
 
-BatteryControl is built as a general-purpose Apple Silicon battery-control utility backed by
-a growing library of verified firmware profiles. Capability is always decided at runtime by
-probing the SMC keys actually present — never by macOS version or Mac model — and every
-profile records the hardware evidence behind it.
+## Compatibility
 
-**Portability:** nothing in the control path is machine-specific. No model identifier,
-firmware build, or test value (80/70 or otherwise) appears in the backend, engine, or XPC
-code — those live only in the evidence database. A fresh install on another M1–M4 Mac
-probes the SMC at runtime and either (a) matches a known key signature and gets full
-control with per-action verification, or (b) finds unknown keys and gets read-only
-diagnostics. The two known profiles (20xxx firmware-limit, legacy SMC inhibit) are built
-into the binary; a community database at `/Library/Application Support/BatteryControl/
-compatibility.json` (schema: `Support/CompatibilityDatabase.json`) can add profiles or
-refresh evidence without an app update, and grows as users submit reports.
+This is the part you should actually read.
 
-### Confidence tiers
+macOS has no public API for capping charge, so every tool in this space (this one
+included) talks to the SMC directly. Which SMC keys exist varies by firmware — newer
+Apple firmware removed the old charging keys and added its own firmware-managed limit.
+So support is decided at runtime, by probing which keys your firmware actually exposes.
+Not by model number, not by macOS version.
+
+There's a small compatibility database of hardware profiles behind that:
 
 | Tier | Meaning |
 |---|---|
-| **Verified firmware profile** | Exercised on real hardware with readback verification and observed battery-state enforcement. Documented with full evidence. |
-| **Compatible by capability** | The detected SMC key signature matches a known mechanism, but this exact firmware build has not itself been exercised. Runtime verification still gates every action. |
-| **Untested firmware** | No profile matches and the key signature is novel. Read-only diagnostics only until evidence is collected. |
-| **Unsupported** | Outside the platform gate (M1–M4, macOS 15), or no control mechanism detected. |
+| Verified | Exercised on that exact machine and firmware build, with readback and observed enforcement |
+| Compatible by capability | Key signature matches a known family; that exact build hasn't been exercised. Every write is still verified at runtime |
+| Untested | Unknown key signature. Read-only diagnostics, no control writes |
+| Unsupported | Outside the platform gate, or no usable mechanism |
 
-The tier is shown in the app's Diagnostics page, in `batterycontrol compatibility`, and in
-the daemon's `--diag-smc` output.
+Where things stand today, honestly:
 
-### Current compatibility status (honest)
+- **Physically tested: one machine.** My M3 MacBook Air (Mac15,13), mBoot-20457.1.29,
+  macOS 15.8 (24H23). The firmware-managed limit and CHIE discharge both work on it,
+  with full write/readback evidence recorded in the profile.
+- **Probably works:** Macs whose SMC signature matches a known family — other 20xxx
+  firmware, or older-firmware Macs with the CH0B/CH0C/CH0I keys. Those get control with
+  per-write verification. If the hardware doesn't honor a write, the app says so
+  instead of claiming success.
+- **Doesn't claim to work:** everything else on macOS 15. It runs, it diagnoses, it
+  stays read-only until there's evidence. There are portability and capability tests
+  in the suite, but those prove the software decides correctly — they are not a
+  substitute for testing real hardware.
 
-**BatteryControl does not claim to support every Mac on macOS 15 yet.** The architecture
-covers the entire Apple Silicon + macOS 15 ecosystem, and the compatibility library grows
-with community evidence:
+You can check what your Mac got: `batterycontrol compatibility`, or the Diagnostics page.
 
-- **Verified (writes enabled):** M3 MacBook Air (Mac15,13) on mBoot-20457.1.29 /
-  macOS 15.8 (24H23), firmware-managed limit + CHIE discharge.
-- **Probable (writes enabled, per-action verified):** machines whose SMC key signature
-  matches a known family — e.g. other 20xxx-firmware Macs exposing bfF0/bfD0/bfE0, or
-  older-firmware Macs exposing CH0B/CH0C/CH0I. These run with the same per-write readback
-  and observed-state verification; if a machine does not honor a write, BatteryControl
-  reports it honestly and falls back rather than pretending.
-- **Untested (read-only):** novel key signatures. The app shows diagnostics and an export
-  command; it will not attempt control writes until the profile is verified.
+The one verified profile, with the actual evidence:
 
-BatteryControl is designed for Apple Silicon M1–M4 systems running macOS 15.x. Physical
-validation has been performed on the project author's M3 MacBook Air; additional hardware
-validation is still encouraged. Check your tier in the app's Diagnostics page or with
-`sudo com.batterycontrol.daemon --diag-smc`.
+| Profile | Hardware | Firmware | What was proven |
+|---|---|---|---|
+| `apple-silicon-20xxx-firmware-limit` (bfF0/bfD0/bfE0 + CHIE/CH0J) | MacBook Air M3 (Mac15,13) | mBoot-20457.1.29 · macOS 15.8 (24H23) | Programmed 80/70; every write readback-verified; charging refused above the limit on wall power (−390 mA at 92% on AC); the SMC enforces the band by itself, across processes |
 
-### Verified profiles
+For that profile: `bfF0` is `0x00` inactive / `0x02` active, `bfD0`/`bfE0` are the
+upper/lower percentages (ui32, little-endian — unlike normal SMC ui32 keys), written in
+the order deactivate → upper → lower → activate, with readback after every write and
+automatic deactivation if anything doesn't check out.
 
-| # | Profile | Hardware | Firmware | Evidence |
-|---|---|---|---|---|
-| 1 | `apple-silicon-20xxx-firmware-limit` (bfF0/bfD0/bfE0 + CHIE/CH0J discharge) | MacBook Air M3 (Mac15,13) | mBoot-20457.1.29 · macOS 15.8 (24H23) | Programmed 80/70, every write readback-verified, charging refused above the upper limit on wall power (−390 mA discharge at 92% while AC attached); limit enforced autonomously by the SMC across processes |
+One verified profile doesn't mean every 20xxx firmware behaves the same. That's why
+unknown firmware stays read-only.
 
-**Verified semantics of profile 1** (the exact behaviors proven on hardware):
-- `bfF0`: `0x00` inactive / `0x02` active (ui8 activation)
-- `bfD0`: upper percentage; `bfE0`: lower percentage (ui32, little-endian)
-- Write sequence: deactivate (`bfF0=0`) → upper → lower → activate (`bfF0=2`)
-- Per-write readback verification, and automatic deactivation on any verification failure
+Nothing in the control path is machine-specific — no model IDs, firmware builds, or
+test values in the backend/engine/XPC code (there's a structural test that fails if
+that ever changes). Machine facts live only in the evidence database. A community
+database at `/Library/Application Support/BatteryControl/compatibility.json` (schema in
+`Support/CompatibilityDatabase.json`) can add profiles without an app update.
 
-**Scope warning:** one verified profile does not mean every 20xxx firmware behaves
-identically. New firmware builds are classified as compatible-by-capability until they are
-exercised on hardware; unknown signatures degrade to read-only diagnostics.
-
-### Contributing a profile
-
-Run the read-only export and open an issue with the JSON:
+If your Mac reports as untested and you want to help: run the read-only export and
+open an issue with the JSON.
 
 ```sh
 sudo com.batterycontrol.daemon --export-compat-report ~/Desktop/bc-compat-report.json
 ```
 
-The report contains hardware identity (chip, model identifier, OS + boot firmware builds)
-and the SMC capability signature — no serial numbers, hardware UUIDs, usernames, or paths.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the submission workflow.
+It contains your chip, model identifier, OS and firmware builds, and the SMC key
+signature. No serial numbers, UUIDs, username, or paths. More in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Building from source
 
-Requirements: macOS 15.x on Apple Silicon, Xcode 16+.
+You need Xcode 16+ on Apple Silicon.
 
 ```sh
 git clone https://github.com/Ednk-1312/BatteryControl.git
@@ -280,105 +242,92 @@ cd BatteryControl
 open BatteryControl.xcodeproj     # then Cmd+R
 ```
 
-Or from the command line:
+or:
 
 ```sh
 xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl -destination 'platform=macOS' build
 ```
 
-The build produces `BatteryControl.app` with the privileged daemon and its LaunchDaemon
-plist embedded at `Contents/Library/LaunchDaemons/`.
+The app bundle embeds the daemon and its launchd plist at
+`Contents/Library/LaunchDaemons/`.
 
-## Running tests
+## Testing
 
 ```sh
 xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl \
     -destination 'platform=macOS' test
 ```
 
-The suite (207 tests in `Tests/BatteryCoreTests`) covers the policy engine, backend
-selection, verification logic, firmware-limit semantics, calibration, CLI parsing, XPC
-envelopes, platform gate, portability, and the failure/recovery negative paths. Pure control
-logic lives in `BatteryCore` precisely so it is unit-testable without hardware.
+207 tests in `Tests/BatteryCoreTests`: policy engine, backend selection, verification,
+firmware-limit semantics, calibration, CLI parsing, XPC envelopes, the platform gate,
+portability, and the failure paths (wrong key width, readback mismatch, activation that
+doesn't stick, unknown signatures). The control logic that matters lives in `BatteryCore`
+so it can be tested without hardware.
 
-## Creating release artifacts
+## Release artifacts
 
-One script builds everything, signs what it can, and verifies package contents:
-
-```sh
-scripts/build-release.sh 1.0.0
-```
-
-Artifacts in `dist/`:
+`scripts/build-release.sh 1.0.0` builds everything into `dist/`:
 
 | File | Contents |
 |---|---|
-| `BatteryControl-1.0.0.pkg` | GUI app + CLI + embedded daemon (installs to `/Applications` and `/usr/local/bin/batterycontrol`) |
-| `BatteryControlCLI-1.0.0.pkg` | CLI only (`/usr/local/bin/batterycontrol`), **no daemon** — it uses the daemon installed by the GUI edition and reports honestly when none is present |
-| `BatteryControl-1.0.0.zip` | Developer-friendly archive of the app + CLI |
-| `SHA256SUMS` | SHA-256 hashes of all artifacts |
+| `BatteryControl-1.0.0.pkg` | App + CLI + embedded daemon |
+| `BatteryControlCLI-1.0.0.pkg` | Just the CLI, no daemon |
+| `BatteryControl-1.0.0.zip` | The app + CLI as a zip |
+| `SHA256SUMS` | Hashes of all three |
 
-The CLI-only package never installs privileged components; the one privileged daemon comes
-only from the GUI edition's setup flow (`SMAppService`, one administrator authorization).
+The script also expands the packages and checks their contents (the CLI package must
+not contain a daemon, and it fails the build if it does).
 
 #### Signing status
 
-The binaries (app, daemon, CLI) are signed with an **Apple Development** certificate when
-one is available in the keychain; the CLI falls back to ad-hoc signing otherwise. The
-`.pkg` installers themselves are currently **unsigned**: signing them requires a *Developer
-ID Installer* certificate and notarization requires a *Developer ID Application*
-certificate plus a paid Apple Developer account and network access at release time. Neither
-is faked. Until a signed/notarized release is produced, users installing the `.pkg` need to
-approve it in System Settings → Privacy & Security on first install (standard Gatekeeper
-flow for unsigned packages). `SHA256SUMS` provides integrity verification in the meantime.
+The binaries are signed with an Apple Development certificate when one is in the
+keychain (the CLI falls back to ad-hoc). The `.pkg` installers are **unsigned** and
+nothing is notarized — that needs a paid Apple Developer account and Developer ID
+certificates, which this project doesn't have yet. I'm not going to fake it. Practical
+consequence: Gatekeeper may ask you to approve the app on first install, and
+`SHA256SUMS` is there so you can check what you downloaded.
 
 ## Uninstalling
 
-All privileged components are removed by the app itself:
+Use the app: Settings → **Remove Helper…**. That unregisters the daemon, removes it
+from `/Library/PrivilegedHelperTools` and `/Library/LaunchDaemons`, restores macOS
+default charging, and quits. Do this before deleting the app bundle — you don't want a
+launchd job pointing at a missing binary.
 
-- **In the app:** Settings → **Remove Helper…** unregisters the daemon, removes it from
-  `/Library/PrivilegedHelperTools` and `/Library/LaunchDaemons`, restores macOS default
-  charging, then quits. This is the recommended path because it also clears any active
-  charge limit safely.
-- **Then:** delete `BatteryControl.app` from `/Applications` (and, if you installed the CLI
-  edition separately, `/usr/local/bin/batterycontrol`).
-- Residual files, all safe to delete: the daemon log at `/var/log/batterycontrol-daemon.log`
-  and the preferences/compatibility files under
-  `/Library/Application Support/BatteryControl/`.
-- Do **not** simply delete the app bundle while the daemon is installed — remove the helper
-  first so no launchd job points at a missing binary.
+Then delete `/Applications/BatteryControl.app` (and `/usr/local/bin/batterycontrol` if
+you installed the CLI edition). Leftovers, all safe to remove:
+`/var/log/batterycontrol-daemon.log` and `/Library/Application Support/BatteryControl/`.
 
 ## Troubleshooting
 
-- **The CLI says "daemon unavailable" (exit 3).** The helper isn't installed or isn't
-  running: open the app and use **Repair Helper…**, or check
+- **CLI says daemon unavailable (exit 3).** The helper isn't installed or isn't
+  running. Repair Helper in the app, or check
   `sudo launchctl print system/com.batterycontrol.daemon`.
-- **The dashboard shows "unavailable" or a stale banner.** The GUI cannot reach the daemon.
-  Controls stay honest — nothing is claimed as enforced. Repair the helper; the dashboard
-  converges back to authoritative state automatically once the daemon responds.
-- **"Hardware verified" is missing while a limit is set.** The daemon could not confirm the
-  hardware state (e.g. right after wake). It retries on its enforcement tick; if it persists,
-  check `batterycontrol diagnostics` for the verification matrix.
-- **The limit doesn't seem to hold.** Confirm the tier: `batterycontrol compatibility`.
-  On untested firmware BatteryControl stays read-only by design. On verified/probable
-  firmware, check that the firmware limit is actually programmed:
-  `sudo com.batterycontrol.daemon --read-firmware-limit`.
-- **The Mac won't charge at all after a crash/discharge.** BatteryControl releases adapter
-  cuts on daemon start and shutdown, but as a manual escape hatch run
-  `batterycontrol discharge stop`, or reboot. `sudo com.batterycontrol.daemon
-  --disable-firmware-limit` deactivates a firmware limit.
-- **Logs:** `/var/log/batterycontrol-daemon.log` (an empty log is good news), the same
-  entries under Diagnostics → Recent helper log, or
+- **Dashboard shows unavailable.** The app can't reach the daemon. It won't claim
+  anything is enforced while it can't verify — that's on purpose. Fix the daemon and
+  the dashboard catches up.
+- **A limit is set but "hardware verified" is missing.** The daemon couldn't confirm
+  the hardware state (common right after wake). It retries on its tick. If it doesn't
+  clear, look at `batterycontrol diagnostics`.
+- **Limit doesn't seem to hold.** Check `batterycontrol compatibility` first. On
+  untested firmware it stays read-only by design. On known firmware, check the
+  hardware directly: `sudo com.batterycontrol.daemon --read-firmware-limit`.
+- **Mac won't charge after a crash or discharge.** `batterycontrol discharge stop`, or
+  reboot. BatteryControl releases adapter cuts on daemon start and shutdown, so this
+  should be rare. `sudo com.batterycontrol.daemon --disable-firmware-limit` turns off a
+  firmware limit.
+- **Logs.** `/var/log/batterycontrol-daemon.log` (empty is good), or Diagnostics →
+  Recent helper log, or
   `log show --predicate 'subsystem == "com.batterycontrol.daemon"' --last 1h`.
-- **Verify charging behavior yourself:**
+- **Check charging yourself:**
 
   ```sh
   ioreg -rn AppleSmartBattery | grep -i -e IsCharging -e ExternalConnected
   ```
 
-  With a limit set and the battery above it on AC, `IsCharging` should read `No`.
+  With a limit set, battery above it, on AC: `IsCharging` should be `No`.
 
-### Advanced hardware diagnostics (daemon binary, root required)
+For poking at hardware directly (root required):
 
 ```sh
 sudo com.batterycontrol.daemon --diag-smc                # which control families this firmware exposes
@@ -387,39 +336,37 @@ sudo com.batterycontrol.daemon --program-firmware-limit 80 70   # program + veri
 sudo com.batterycontrol.daemon --disable-firmware-limit  # deactivate, restore normal charging
 ```
 
-`--program-firmware-limit` runs the full safety chain (validation → pre-readback → required
-write order → post-readback verify → automatic deactivation on mismatch) and is **blocked**
-on machines whose compatibility tier does not allow control writes (`--experimental`
-overrides only for supervised verification sessions). `--diag-smc` is read-only and reports
-the detected control family: `firmwareLimit` (bf* keys + adapter cut), `legacy`
-(CH0B/CH0C + CH0I), `legacyTahoe` (CHTE + CHIE), or `none`.
+`--program-firmware-limit` runs the full safety chain and refuses to run on machines
+whose tier doesn't allow control writes (`--experimental` exists for supervised
+verification sessions only). `--diag-smc` is read-only and reports the detected family:
+`firmwareLimit` (bf* keys + adapter cut), `legacy` (CH0B/CH0C + CH0I), `legacyTahoe`
+(CHTE + CHIE), or `none`.
 
-## Limitations
+## Known limitations
 
-- **No public macOS API exists for capping charge.** Control uses undocumented SMC
-  interfaces, which Apple can change in any release — exactly why every operation is
-  verified and the app degrades to "unverified/unsupported" instead of pretending.
-- **The CHWA backend is present and probed but intentionally never selected** until a
-  verified, machine-specific probe exists; the SMC inhibit mechanism covers the same need.
-  The `bclm`-style BCLM mechanism is documented as **not viable on macOS 15+** (kernel
-  entitlement enforcement — see bclm's own README) and is represented only as a non-selected
-  legacy ID. See `ATTRIBUTION.md`.
-- **Physical hardware validation is limited to the author's machine** (see the verified
-  profile above). Other machines run under capability-based classification with per-action
-  verification; community compatibility reports are how the verified list grows.
-- Firmware limits enforce a **band** (upper/lower), not a pinned exact percentage; that is
-  the firmware's design and avoids micro-cycling.
-- Force discharge is intentionally slow and stops before sleep, on unplug, at the floor, or
-  at the target.
+- No public macOS API for this, so it's undocumented SMC interfaces all the way down.
+  Apple can change them whenever. That's exactly why every operation is verified and
+  the app degrades to "unverified" instead of guessing.
+- The CHWA backend is probed but never selected — no verified probe for it yet; the SMC
+  inhibit mechanism covers the same ground. The old BCLM trick doesn't work on macOS
+  15+ at all (kernel blocks it).
+- Physically validated on one machine (mine). Everything else is capability-based with
+  per-write verification. Compatibility reports are how this gets better.
+- Firmware limits are a band, not an exact pin. That's the firmware's design and it's
+  what avoids micro-cycling.
+- Force discharge is slow, and it stops before sleep. That's deliberate.
+- Unsigned installers, no notarization (see above).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The highest-value contribution is a
-**compatibility report** — an anonymized hardware/firmware/SMC-capability export from the
-Diagnostics page or `--export-compat-report` — which grows the verified profile library that
-decides what is safe on real machines. Code contributions follow the architecture rules in
-that file: runtime capability detection only, readback verification on every write path,
-honest state reporting, and tests for changes to selection/classification/validation logic.
+The most useful thing you can send me is a compatibility report — run the export
+command above and open an issue with the JSON. That's what grows the list of machines
+this actually works on.
+
+Code contributions are welcome too. The rules that matter: capability detection at
+runtime only (never model/OS-based), readback verification on every write path, honest
+state reporting, and tests for anything that touches selection/classification/validation.
+Details in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
@@ -427,7 +374,9 @@ MIT — see [LICENSE](LICENSE).
 
 ## Attribution
 
-Portions of BatteryControl adapt or are informed by permissively licensed open-source
-projects (SMCKit, battery-limiter, smctl, bclm, actuallymentor/battery, BatFi); the
-firmware-limit implementation is an independent implementation from documented behavioral
-research. Full licensing detail is in [ATTRIBUTION.md](ATTRIBUTION.md).
+Pieces of this adapt or build on MIT-licensed projects: SMCKit (the SMC user-client
+basics), battery-limiter (the CH0B/CH0C/CH0I semantics and the daemon/app split),
+smctl (verify-after-write discipline), bclm, actuallymentor/battery, and BatFi. The
+firmware-limit implementation is my own, written from documented behavioral research —
+no GPL code (the `batt` project) was used. Full detail in
+[ATTRIBUTION.md](ATTRIBUTION.md).
