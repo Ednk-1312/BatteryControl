@@ -346,6 +346,17 @@ certificates, which this project doesn't have yet. I'm not going to fake it. Pra
 consequence: Gatekeeper may ask you to approve the app on first install, and
 `SHA256SUMS` is there so you can check what you downloaded.
 
+#### Official releases only
+
+The MIT license means forks and reuploads are allowed, and some will exist. If you
+got an installer from anywhere other than the
+[releases page](https://github.com/Ednk-1312/BatteryControl/releases) of this
+repository, it isn't mine and I can't vouch for what's in it — that includes
+"mirror" download sites and anything bundled with other software. The official
+artifacts are the ones attached to releases in this repo, and each release includes
+a `SHA256SUMS` file; comparing the hash of what you downloaded takes ten seconds
+(`shasum -a 256 <file>`).
+
 ## Uninstalling
 
 Use the app: Settings → **Remove Helper…**. That unregisters the daemon, removes it
