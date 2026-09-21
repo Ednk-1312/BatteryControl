@@ -107,7 +107,10 @@ final class FixedChargeLimitTests: XCTestCase {
         // hardware: 80% upper, 70% resume. It remains expressible; the
         // narrow default is a UX choice, not a hardware constraint.
         let policy = FixedChargeLimit.policy(upper: 80, resume: 70)
-        XCTAssertEqual(policy.summary, "Hold 70–80%")
+        // The summary names the USER'S limit and describes the lower
+        // threshold as resume behavior — never as a range like "70–80%"
+        // that reads like a second limit the user chose.
+        XCTAssertEqual(policy.summary, "Charge limit 80% (resumes at 70%)")
     }
 
     // MARK: Explanation copy

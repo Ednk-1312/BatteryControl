@@ -44,13 +44,16 @@ public struct ChargingPolicy: Codable, Equatable, Sendable {
         }
     }
 
-    /// Human-readable description, e.g. "Hold 70–80%".
+    /// Human-readable description. For a fixed charge limit the limit is
+    /// the headline; the lower threshold is resume behavior, not a second
+    /// number the user must decode ("Hold 70–80%" read like a range the
+    /// user had chosen).
     public var summary: String {
         switch mode {
         case .passthrough:
             return "macOS default charging"
         case .hysteresis:
-            return "Hold \(lowerLimit)–\(upperLimit)%"
+            return "Charge limit \(upperLimit)% (resumes at \(lowerLimit)%)"
         case .fixedTarget:
             return "Maintain about \(upperLimit)%"
         }

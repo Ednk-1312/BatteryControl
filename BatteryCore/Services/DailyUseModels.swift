@@ -64,9 +64,9 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
 
     public var explanation: String {
         switch self {
-        case .daily: return "80% upper / 70% lower"
-        case .batterySaver: return "70% upper / 60% lower"
-        case .chronicallyPluggedIn: return "50% upper / 48% lower — less time at high voltage, which can slow battery wear"
+        case .daily: return "Fixed 80% limit"
+        case .batterySaver: return "Fixed 70% limit"
+        case .chronicallyPluggedIn: return "Fixed 50% limit — less time at high voltage, which can slow battery wear"
         case .fullCharge: return "100% — use macOS default charging"
         case .custom: return "Choose your own upper and lower limits"
         }
