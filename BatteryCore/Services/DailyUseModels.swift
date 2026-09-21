@@ -48,6 +48,7 @@ public struct BatteryHealthSummary: Codable, Equatable, Sendable {
 public enum ChargePreset: String, Codable, CaseIterable, Sendable {
     case daily
     case batterySaver
+    case chronicallyPluggedIn
     case fullCharge
     case custom
 
@@ -55,6 +56,7 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
         switch self {
         case .daily: return "Daily"
         case .batterySaver: return "Battery Saver"
+        case .chronicallyPluggedIn: return "Chronically Plugged In"
         case .fullCharge: return "Full Charge"
         case .custom: return "Custom"
         }
@@ -64,6 +66,7 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
         switch self {
         case .daily: return "80% upper / 70% lower"
         case .batterySaver: return "70% upper / 60% lower"
+        case .chronicallyPluggedIn: return "50% upper / 48% lower — less time at high voltage, which can slow battery wear"
         case .fullCharge: return "100% — use macOS default charging"
         case .custom: return "Choose your own upper and lower limits"
         }
@@ -73,6 +76,7 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
         switch self {
         case .daily: return FixedChargeLimit.policy(upper: 80, resume: 70)
         case .batterySaver: return FixedChargeLimit.policy(upper: 70, resume: 60)
+        case .chronicallyPluggedIn: return FixedChargeLimit.policy(upper: 50)
         case .fullCharge: return .passthrough()
         case .custom: return nil
         }
@@ -82,6 +86,7 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
         if policy.mode == .passthrough { return .fullCharge }
         if policy == FixedChargeLimit.policy(upper: 80, resume: 70) { return .daily }
         if policy == FixedChargeLimit.policy(upper: 70, resume: 60) { return .batterySaver }
+        if policy == FixedChargeLimit.policy(upper: 50) { return .chronicallyPluggedIn }
         return .custom
     }
 }
@@ -97,6 +102,17 @@ public struct BatteryControlEvent: Codable, Equatable, Sendable {
         self.timestamp = timestamp
         self.kind = kind
         self.detail = detail
+    }
+
+    /// Support exports contain only factual event text. Redact path-shaped
+    /// values even if a future diagnostic detail accidentally includes one.
+    public var sanitizedForExport: BatteryControlEvent {
+        let sanitized = detail.replacingOccurrences(
+            of: #"/Users/[^ ]+"#,
+            with: "/Users/<redacted>",
+            options: .regularExpression
+        )
+        return BatteryControlEvent(kind: kind, detail: sanitized, timestamp: timestamp)
     }
 }
 
@@ -153,12 +169,21 @@ private extension JSONDecoder {
 public struct SupportBundleManifest: Codable, Equatable, Sendable {
     public let appVersion: String
     public let compatibilityReport: CompatibilityReport?
+    /// The last daemon-confirmed status, including policy, override, and
+    /// verification state. This is a DTO snapshot, not a second authority.
+    public let statusSnapshot: BatteryStatusSnapshot?
     public let events: [BatteryControlEvent]
 
-    public init(appVersion: String, compatibilityReport: CompatibilityReport?, events: [BatteryControlEvent]) {
+    public init(
+        appVersion: String,
+        compatibilityReport: CompatibilityReport?,
+        statusSnapshot: BatteryStatusSnapshot? = nil,
+        events: [BatteryControlEvent]
+    ) {
         self.appVersion = appVersion
         self.compatibilityReport = compatibilityReport
-        self.events = events
+        self.statusSnapshot = statusSnapshot
+        self.events = events.map(\.sanitizedForExport)
     }
 
     public func jsonData() throws -> Data {

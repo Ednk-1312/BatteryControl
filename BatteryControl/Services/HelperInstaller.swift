@@ -154,22 +154,70 @@ final class HelperInstaller {
         }
     }
 
-    /// Remove the helper (restore charging first). Used by "Remove Helper".
+    /// Remove BatteryControl completely. The daemon owns safe-state
+    /// restoration and removal of privileged files; this client only removes
+    /// the app bundle and, with explicit consent, user-owned data.
+    func uninstallApplication(removeUserData: Bool, progress: @escaping (String) -> Void, completion: @escaping (Bool, String) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            DispatchQueue.main.async { progress("Restoring normal charging…") }
+            guard DaemonXPCClient.shared.uninstallPrivilegedComponentsSync(removeCLI: true) else {
+                DispatchQueue.main.async {
+                    completion(false, "BatteryControl could not verify normal charging or remove the privileged helper. Nothing else was deleted.")
+                }
+                return
+            }
+
+            if let service = self.service { try? service.unregister() }
+            if removeUserData {
+                let support = BatteryControlUserData.applicationSupportURL()
+                try? FileManager.default.removeItem(at: support)
+                UserDefaults.standard.removePersistentDomain(forName: BatteryXPC.appBundleID)
+                UserDefaults.standard.synchronize()
+            }
+
+            DispatchQueue.main.async { progress("Removing BatteryControl…") }
+            let appPath = Bundle.main.bundlePath
+            // Bundle.main is expected to be an app bundle, but validate the
+            // path before constructing the destructive command. Shell-quote
+            // the path independently of AppleScript quoting so an unusual
+            // installation path cannot become command injection.
+            guard appPath.hasSuffix(".app"), appPath.count > 5, appPath != "/" else {
+                DispatchQueue.main.async {
+                    completion(false, "The application path could not be validated; privileged components were left untouched.")
+                }
+                return
+            }
+            let shell = "/bin/rm -rf \(shellQuoted(appPath))"
+            let script = "do shell script \"" + escapedForAppleScript(shell) + "\" with administrator privileges"
+            guard self.runOsaScript(script) else {
+                DispatchQueue.main.async {
+                    completion(false, "The privileged components were removed, but the application could not be removed. You can move BatteryControl.app to the Trash manually.")
+                }
+                return
+            }
+            let removed = self.waitForPrivilegedRemoval(timeout: 5)
+                && !FileManager.default.fileExists(atPath: appPath)
+            DispatchQueue.main.async {
+                completion(removed, removed ? "BatteryControl was completely removed; macOS has resumed normal charging management." : "Uninstall could not verify that every BatteryControl component was removed.")
+            }
+        }
+    }
+
+    /// Helper-only removal used by the existing Settings action. It never
+    /// deletes the application bundle; the first-class uninstall flow above
+    /// does that only after the user confirms it.
     func uninstall(progress: @escaping (String) -> Void, completion: @escaping (Bool, String) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
-            // Restore normal charging via XPC before tearing down, if we can.
-            _ = DaemonXPCClient.shared.cancelOverridesSync()
-
-            if let service = self.service {
-                try? service.unregister()
-            }
-            DispatchQueue.main.async { progress("Removing the helper files…") }
-            let shell = "/bin/launchctl bootout system/\(BatteryXPC.helperBundleID) 2>/dev/null; /bin/rm -f '\(BatteryXPC.launchDaemonPlistPath)' '\(BatteryXPC.helperInstallPath)'"
-            let script = "do shell script \"" + escapedForAppleScript(shell) + "\" with administrator privileges"
-            let ok = runOsaScript(script)
+            DispatchQueue.main.async { progress("Restoring normal charging…") }
+            let ok = DaemonXPCClient.shared.uninstallPrivilegedComponentsSync(removeCLI: false)
+            if let service = self.service { try? service.unregister() }
+            let verified = ok && self.waitForPrivilegedRemoval(timeout: 5)
             DispatchQueue.main.async {
-                completion(ok, ok ? "" : "Administrator authorization was declined or the files could not be removed.")
+                completion(verified, verified
+                    ? "The helper was removed and macOS/default charging restored."
+                    : "BatteryControl could not verify safe helper removal; no application files were deleted.")
             }
         }
     }
@@ -198,23 +246,30 @@ final class HelperInstaller {
         let shell = """
         set -e
         /bin/mkdir -p '/Library/PrivilegedHelperTools'
-        /bin/cp -f '\(daemonSource)' '\(BatteryXPC.helperInstallPath)'
-        /bin/chmod 755 '\(BatteryXPC.helperInstallPath)'
-        /usr/sbin/chown root:wheel '\(BatteryXPC.helperInstallPath)'
+        /bin/cp -f \(shellQuoted(daemonSource)) \(shellQuoted(BatteryXPC.helperInstallPath))
+        /bin/chmod 755 \(shellQuoted(BatteryXPC.helperInstallPath))
+        /usr/sbin/chown root:wheel \(shellQuoted(BatteryXPC.helperInstallPath))
         /bin/mkdir -p '/Library/LaunchDaemons'
-        /bin/cp -f '\(plistSource)' '\(installedPlist)'
-        /bin/chmod 644 '\(installedPlist)'
-        /usr/sbin/chown root:wheel '\(installedPlist)'
-        /usr/libexec/PlistBuddy -c 'Delete :BundleProgram' '\(installedPlist)' 2>/dev/null || true
-        /usr/libexec/PlistBuddy -c 'Add :Program string \(BatteryXPC.helperInstallPath)' '\(installedPlist)' 2>/dev/null || /usr/libexec/PlistBuddy -c 'Set :Program \(BatteryXPC.helperInstallPath)' '\(installedPlist)'
+        /bin/cp -f \(shellQuoted(plistSource)) \(shellQuoted(installedPlist))
+        /bin/chmod 644 \(shellQuoted(installedPlist))
+        /usr/sbin/chown root:wheel \(shellQuoted(installedPlist))
+        /usr/libexec/PlistBuddy -c 'Delete :BundleProgram' \(shellQuoted(installedPlist)) 2>/dev/null || true
+        /usr/libexec/PlistBuddy -c 'Add :Program string \(BatteryXPC.helperInstallPath)' \(shellQuoted(installedPlist)) 2>/dev/null || /usr/libexec/PlistBuddy -c 'Set :Program \(BatteryXPC.helperInstallPath)' \(shellQuoted(installedPlist))
         /bin/launchctl bootout system/\(BatteryXPC.helperBundleID) 2>/dev/null || true
-        /bin/launchctl bootstrap system '\(installedPlist)'
+        /bin/launchctl bootstrap system \(shellQuoted(installedPlist))
         """
 
         let appleScript = "do shell script \"" + escapedForAppleScript(shell) + "\" with administrator privileges"
         return runOsaScript(appleScript)
             ? .success(())
             : .failure(.authorizationDeclined)
+    }
+
+    /// Quote one argument for the POSIX shell. This is separate from the
+    /// AppleScript escaping below: the shell must never interpret characters
+    /// from an app-bundle path as syntax.
+    private func shellQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\\"'\\\"'") + "'"
     }
 
     /// Escape a shell string for embedding inside an AppleScript
@@ -238,6 +293,17 @@ final class HelperInstaller {
         } catch {
             return false
         }
+    }
+
+    private func waitForPrivilegedRemoval(timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if BatteryControlUninstallVerification.privilegedComponentsGone() {
+                return true
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        } while Date() < deadline
+        return BatteryControlUninstallVerification.privilegedComponentsGone()
     }
 
     @discardableResult

@@ -133,13 +133,17 @@ struct DischargeControlsView: View {
         .disabled(!appState.capabilities.supportsForceDischarge)
     }
 
+    @ViewBuilder
     private var explanationText: some View {
-        let floorLine = belowFloorEnabled
-            ? "The safety floor is REMOVED: discharge may continue to \(Int(targetPercent))% and stop only there."
-            : "Discharge stops automatically at the target, at the \(Int(floorPercent))% safety floor, when the charger is physically unplugged, or before sleep."
-        return Text(floorLine)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        if !belowFloorEnabled {
+            Text("Discharge stops automatically at the target, at the \(Int(floorPercent))% safety floor, when the charger is physically unplugged, or before sleep.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if targetPercent < Double(ChargingPolicyEngine.minimumDischargeFloor) {
+            Text("Safety floor removed: discharge may continue below \(ChargingPolicyEngine.minimumDischargeFloor)% to the \(Int(targetPercent))% target. This accelerates battery degradation.")
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
     }
 
     private var startButton: some View {
@@ -171,8 +175,9 @@ struct DischargeControlsView: View {
                 Text("Current \(currentPercent)% → Target \(target)%")
                     .font(.callout.monospacedDigit())
             }
-            if floor < ChargingPolicyEngine.minimumDischargeFloor {
-                Label("Safety floor removed — discharging below \(ChargingPolicyEngine.minimumDischargeFloor)%. This accelerates battery degradation.",
+            if floor < ChargingPolicyEngine.minimumDischargeFloor,
+               currentPercent < ChargingPolicyEngine.minimumDischargeFloor {
+                Label("Below \(ChargingPolicyEngine.minimumDischargeFloor)% with the safety floor removed. This accelerates battery degradation.",
                       systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundStyle(.red)

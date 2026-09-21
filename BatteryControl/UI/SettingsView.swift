@@ -11,6 +11,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(MenuBarVisibility.key) private var showMenuBarIcon = MenuBarVisibility.defaultShowIcon
     @AppStorage("launchAtLogin") private var launchAtLogin = false
+    @State private var showUninstallConfirmation = false
 
     var body: some View {
         Form {
@@ -107,6 +108,22 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Uninstall") {
+                Button("Uninstall BatteryControl…", role: .destructive) {
+                    showUninstallConfirmation = true
+                }
+                .disabled(appState.isInstalling)
+                Text("Uninstalling stops BatteryControl enforcement, restores normal macOS charging, removes the privileged daemon and launch configuration, and removes the application. You can keep or remove your local settings and history.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let message = appState.uninstallMessage, !appState.uninstallSucceeded {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+            }
+
             Section("About") {
                 LabeledContent("Version", value: appVersion)
                 LabeledContent("Scope", value: "Apple Silicon M1–M5 · macOS 14/15/26/27")
@@ -122,6 +139,21 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .confirmationDialog(
+            "Uninstall BatteryControl?",
+            isPresented: $showUninstallConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Remove App, Keep Settings/History") {
+                appState.uninstallBatteryControl(removeUserData: false)
+            }
+            Button("Remove App and Local Data", role: .destructive) {
+                appState.uninstallBatteryControl(removeUserData: true)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("BatteryControl will first verify normal charging, stop enforcement, remove its privileged daemon/helper and launch configuration, then remove the app. macOS and the hardware will resume their normal charging management. This cannot be undone from BatteryControl.")
+        }
     }
 
     /// Short tier headline for Settings; the plain-language explanation is

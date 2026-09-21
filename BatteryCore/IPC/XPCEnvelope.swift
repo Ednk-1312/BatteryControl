@@ -20,6 +20,7 @@ public final class XPCEnvelope: NSObject, NSSecureCoding, @unchecked Sendable {
     public static let kindDiagnostics = "diagnostics"
     public static let kindCompatibilityReport = "compatibilityReport"
     public static let kindDatabaseInstall = "databaseInstall"
+    public static let kindUninstall = "uninstall"
     public static let kindAck = "ack"
     public static let kindError = "error"
 

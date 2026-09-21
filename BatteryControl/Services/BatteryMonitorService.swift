@@ -59,6 +59,8 @@ final class AppState: ObservableObject {
     @Published var helperStatus: HelperStatus
     @Published var installProgress: String?
     @Published var isInstalling = false
+    @Published var uninstallMessage: String?
+    @Published var uninstallSucceeded = false
 
     /// Daily-use local history is bounded and never leaves this Mac.
     @Published private(set) var localHistory: LocalEventHistory
@@ -235,10 +237,8 @@ final class AppState: ObservableObject {
         persistLocalHistory()
     }
 
-    private static let historyURL: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("BatteryControl", isDirectory: true).appendingPathComponent("events.json")
-    }()
+    private static let historyURL: URL = BatteryControlUserData.applicationSupportURL()
+        .appendingPathComponent("events.json")
 
     private static func loadLocalHistory() -> LocalEventHistory {
         guard let data = try? Data(contentsOf: historyURL) else { return LocalEventHistory() }
@@ -248,10 +248,16 @@ final class AppState: ObservableObject {
     private func persistLocalHistory() {
         guard let data = try? localHistory.encodedData() else { return }
         let url = Self.historyURL
-        DispatchQueue.global(qos: .utility).async {
+        historyPersistenceQueue.async {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: url, options: .atomic)
         }
+    }
+
+    /// Wait until all history writes queued before this call have completed.
+    /// Used before deleting user data so uninstall cannot recreate the folder.
+    private func flushLocalHistoryPersistence() {
+        historyPersistenceQueue.sync {}
     }
 
     /// Concise policy summary for the menu bar. States the user's charge
@@ -292,6 +298,12 @@ final class AppState: ObservableObject {
     /// competing request, so two responses can never arrive out of order
     /// and a slower earlier response can never overwrite a newer one.
     private var inFlightPoll: Task<Void, Never>?
+
+    /// Serializes local-history writes. Without this queue, a clear or a
+    /// newer event can be followed by an older queued write, resurrecting
+    /// deleted history; uninstall could also remove the directory while a
+    /// pending write recreated it.
+    private let historyPersistenceQueue = DispatchQueue(label: "com.batterycontrol.app.history-persistence")
 
     /// When the last command completed. A status snapshot the daemon built
     /// BEFORE this instant predates the command's effect and must not be
@@ -383,6 +395,27 @@ final class AppState: ObservableObject {
             self.installProgress = nil
             self.lastAckMessage = ok ? "The helper was removed and charging restored to macOS defaults." : message
             self.poll()
+        })
+    }
+
+    func uninstallBatteryControl(removeUserData: Bool) {
+        guard !isInstalling else { return }
+        // The uninstall worker may remove Application Support. Drain the
+        // serialized writer first so a queued snapshot cannot recreate local
+        // data after the user explicitly chose to delete it.
+        flushLocalHistoryPersistence()
+        isInstalling = true
+        uninstallMessage = nil
+        uninstallSucceeded = false
+        installer.uninstallApplication(removeUserData: removeUserData, progress: { [weak self] step in
+            self?.installProgress = step
+        }, completion: { [weak self] ok, message in
+            guard let self else { return }
+            self.isInstalling = false
+            self.installProgress = nil
+            self.uninstallSucceeded = ok
+            self.uninstallMessage = message
+            if ok { NSApp.terminate(nil) }
         })
     }
 

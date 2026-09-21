@@ -188,6 +188,13 @@ public final class DaemonXPCClient: @unchecked Sendable {
         }
     }
 
+    public func uninstallPrivilegedComponents(removeCLI: Bool = true) async -> OperationAck? {
+        let request = UninstallRequest(removeCLI: removeCLI)
+        return await sendAck(request, kind: XPCEnvelope.kindUninstall) { proxy, envelope, reply in
+            proxy.uninstall(envelope, withReply: reply)
+        }
+    }
+
     public func cancelOverrides() async -> OperationAck? {
         let once = OnceDelivery<OperationAck?>(default: nil)
         return await race(once) {
@@ -343,6 +350,26 @@ public final class DaemonXPCClient: @unchecked Sendable {
                 return
             }
             proxy.getStatus { _ in state.signal(true) }
+        }
+        return state.wait(seconds: timeout)
+    }
+
+    /// Request the daemon-owned safe restore and privileged removal. The
+    /// daemon replies only after it has verified normal charging; removal
+    /// itself then happens asynchronously so launchd can stop the process.
+    public func uninstallPrivilegedComponentsSync(timeout: TimeInterval = 5, removeCLI: Bool = true) -> Bool {
+        let request = UninstallRequest(removeCLI: removeCLI)
+        guard let envelope = XPCEnvelope.encode(request, kind: XPCEnvelope.kindUninstall) else { return false }
+        let state = SyncWaitBox()
+        queue.async { [weak self] in
+            guard let self, let proxy = self.remoteObject() else {
+                state.signal(false)
+                return
+            }
+            proxy.uninstall(envelope) { reply in
+                let accepted = reply?.decode(OperationAck.self, expectingKind: XPCEnvelope.kindAck)?.accepted == true
+                state.signal(accepted)
+            }
         }
         return state.wait(seconds: timeout)
     }

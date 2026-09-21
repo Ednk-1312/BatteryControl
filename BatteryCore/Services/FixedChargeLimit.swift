@@ -18,7 +18,7 @@ public enum FixedChargeLimit {
     /// of enforcement: the backend still has to support the mechanism and
     /// verify every write on this specific hardware. 100% is included for
     /// users who want to disable limiting by charging fully.
-    public static let presetPercents: [Int] = [60, 70, 75, 80, 85, 90, 95, 100]
+    public static let presetPercents: [Int] = [50, 60, 70, 75, 80, 85, 90, 95, 100]
 
     /// Whether `upper` is one of the advertised presets (false → Custom).
     public static func isPreset(_ upper: Int) -> Bool {

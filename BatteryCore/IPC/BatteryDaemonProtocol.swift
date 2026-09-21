@@ -17,4 +17,5 @@ import Foundation
     func runDiagnostics(withReply reply: @escaping (XPCEnvelope?) -> Void)
     func exportCompatibilityReport(withReply reply: @escaping (XPCEnvelope?) -> Void)
     func installCompatibilityDatabase(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void)
+    func uninstall(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void)
 }

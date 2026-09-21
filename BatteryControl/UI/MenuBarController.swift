@@ -165,7 +165,7 @@ final class MenuBarController {
         let presetHeader = NSMenuItem(title: "Charge Presets", action: nil, keyEquivalent: "")
         presetHeader.isEnabled = false
         menu.addItem(presetHeader)
-        for preset in [ChargePreset.daily, .batterySaver, .fullCharge] {
+        for preset in [ChargePreset.daily, .batterySaver, .chronicallyPluggedIn, .fullCharge] {
             let item = NSMenuItem(title: preset.title, action: #selector(applyPreset(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = preset.rawValue

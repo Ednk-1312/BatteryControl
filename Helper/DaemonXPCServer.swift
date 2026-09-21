@@ -39,7 +39,12 @@ final class DaemonXPCServer: NSObject {
         let ownTeam = ownInfo[kSecCodeInfoTeamIdentifier as String] as? String
 
         if let clientTeam, let ownTeam, !clientTeam.isEmpty, clientTeam == ownTeam {
-            return true
+            // Team-ID equality alone is too broad: it would authorize any
+            // app signed by the developer. Pin the code identifier as well,
+            // while allowing both official clients (GUI and standalone CLI).
+            let clientIdentifier = clientInfo[kSecCodeInfoIdentifier as String] as? String
+            return clientIdentifier == BatteryXPC.appBundleID
+                || clientIdentifier == BatteryXPC.cliBundleID
         }
 
         // Ad-hoc path: both unsigned by a team. Require the client to sit
@@ -293,6 +298,43 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
         } catch {
             DaemonLog.warning("Database install failed: \(error).", operation: "database")
             reply(ack(false, "The database could not be written: \(error)"))
+        }
+    }
+
+    /// Safely tear down privileged BatteryControl components. The daemon
+    /// verifies normal charging first, replies only after that succeeds, then
+    /// removes only its own launch job, helper, root state, and optional CLI.
+    /// No arbitrary shell is accepted from the client.
+    func uninstall(_ envelope: XPCEnvelope, withReply reply: @escaping (XPCEnvelope?) -> Void) {
+        guard let request = envelope.decode(UninstallRequest.self, expectingKind: XPCEnvelope.kindUninstall) else {
+            reply(ack(false, "Malformed uninstall request."))
+            return
+        }
+        guard engine.prepareForUninstall() else {
+            reply(ack(false, "BatteryControl could not verify normal charging before uninstall; nothing was removed."))
+            return
+        }
+        reply(ack(true, "Normal charging verified; privileged removal is proceeding."))
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.25) {
+            // Unlink the files first. bootout may terminate this process
+            // immediately, so cleanup must not depend on code after it.
+            try? FileManager.default.removeItem(atPath: BatteryXPC.launchDaemonPlistPath)
+            try? FileManager.default.removeItem(atPath: BatteryXPC.helperInstallPath)
+            try? FileManager.default.removeItem(atPath: BatteryXPC.helperConfigPath)
+            try? FileManager.default.removeItem(atPath: BatteryXPC.compatibilityDatabasePath)
+            if request.removeCLI {
+                try? FileManager.default.removeItem(atPath: BatteryXPC.cliInstallPath)
+            }
+            let bootout = Process()
+            bootout.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            bootout.arguments = ["bootout", "system/\(BatteryXPC.helperBundleID)"]
+            try? bootout.run()
+            bootout.waitUntilExit()
+            if request.removeCLI {
+                try? FileManager.default.removeItem(atPath: BatteryXPC.cliInstallPath)
+            }
+            // The launch job is gone and this process is no longer needed.
+            exit(0)
         }
     }
 

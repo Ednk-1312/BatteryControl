@@ -14,7 +14,7 @@ the hardware work; the app and CLI just talk to it.
 
 ## What it does
 
-- **Charge limit.** Pick a preset (60/70/75/80/85/90/95/100%) or a custom value. Charging
+- **Charge limit.** Pick a preset (50/60/70/75/80/85/90/95/100%) or a custom value. Charging
   stops at your limit and resumes at a lower limit (default: 2 points below). No micro-cycling.
   Limits below 80% are the point — Apple's own built-in Charge Limit only spans 80–100%.
 - **Force discharge.** Cuts adapter input so the Mac runs on battery down to a target
@@ -25,8 +25,11 @@ the hardware work; the app and CLI just talk to it.
   it does not repair the battery.
 - **Battery health.** Charge state, cycle count, temperature, capacity values, and a clearly
   labeled capacity-ratio estimate when the underlying telemetry is available.
-- **Daily presets.** Daily (80/70), Battery Saver (70/60), Full Charge, and Custom. Presets
+- **Daily presets.** Daily (80/70), Battery Saver (70/60), Chronically Plugged In (50/48), Full Charge, and Custom. The 50% option is useful for a Mac that stays connected to power: spending less time at high charge and voltage can help reduce long-term battery wear. Presets
   use the same daemon path as manual limits and are not shown as active before verification.
+- **Setup guide.** First launch shows a real in-app setup guide: what the helper does,
+  the three install steps, and live helper status with an Install button. No digging
+  through Settings.
 - **Local history and support bundle.** A bounded, local-only event list and a sanitized JSON
   bundle for troubleshooting. Nothing is uploaded.
 - **Diagnostics.** What backend your Mac uses, whether control is verified right now,
@@ -36,14 +39,14 @@ the hardware work; the app and CLI just talk to it.
 
 | Feature | What it does | Caveats |
 |---|---|---|
-| Fixed Charge Limit | "Set my Mac to 80%" — presets (60–100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
+| Fixed Charge Limit | "Set my Mac to 80%" — presets (50–100%), custom, configurable lower limit | Charging can overshoot by a fraction of a percent; the gauge refreshes about once a minute |
 | Lower limit | Charging resumes only after the battery falls to it (hysteresis) | — |
 | Fixed target | Holds "about 80%" with a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
 | Force discharge | Runs on battery down to a target on AC | Slow (~1% per 5–10 min idle); auto-stops at target/floor/unplug/sleep |
-| Below-floor discharge (opt-in) | Red "Remove safety floor" switch allows draining below 20% | Wears the battery out faster. Explicit confirmation required; the daemon checks the consent itself |
+| Below-floor discharge (opt-in) | Red "Remove safety floor" switch allows draining below 20% | Wears the battery out faster. Explicit confirmation required; the daemon checks the consent itself. The below-floor warning appears only when the target or the battery is actually below 20% |
 | Charge to 100% | Daemon-owned override until target, cancellation, or 1/2-hour deadline | Hardware state is still verified; expired sessions restore the saved policy |
 | Calibration | Discharge to 20% → charge to 100% → hold 3 hours → drop to your limit, with safety aborts | Re-trains the gauge estimate; does not fix physical battery health |
-| Diagnostics | Backend capabilities, verification state, readable log | — |
+| Presets | Daily (80/70), Battery Saver (70/60), Chronically Plugged In (50/48), Full Charge, Custom | Shown as active only after the daemon verifies hardware state |
 
 ## Supported Macs
 
@@ -88,7 +91,7 @@ Two editions, same codebase, same daemon:
 
 To install the GUI edition:
 
-1. Grab `BatteryControl-1.0.0.pkg` from the
+1. Grab `BatteryControl-1.3.0.pkg` from the
    [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest)
    (check it against `SHA256SUMS` if you want).
 2. Run the installer. It puts the app in `/Applications` and the CLI in `/usr/local/bin`.
@@ -201,8 +204,9 @@ shown as **Unavailable**, not as zero.
 
 A small local event history records control changes, verification outcomes, recovery, and
 session boundaries. It is bounded, stays on this Mac, and can be cleared from Settings. The
-support bundle contains only the compatibility report and this sanitized history; it does not
-upload anything or include raw unrelated system logs.
+support bundle contains the compatibility report, the last daemon-confirmed status
+(policy, override, telemetry, verification), and this sanitized history; it does not upload
+anything or include raw unrelated system logs.
 
 ## Safety
 
@@ -343,7 +347,7 @@ xcodebuild -project BatteryControl.xcodeproj -scheme BatteryControl \
     -destination 'platform=macOS' test
 ```
 
-244 tests in `Tests/BatteryCoreTests`: policy engine, backend selection, verification,
+285 tests in `Tests/BatteryCoreTests`: policy engine, backend selection, verification,
 firmware-limit semantics, calibration, CLI parsing, XPC envelopes, the platform gate,
 portability, and the failure paths (wrong key width, readback mismatch, activation that
 doesn't stick, unknown signatures). The control logic that matters lives in `BatteryCore`
@@ -351,13 +355,13 @@ so it can be tested without hardware.
 
 ## Release artifacts
 
-`scripts/build-release.sh 1.0.0` builds everything into `dist/`:
+`scripts/build-release.sh 1.3.0` builds everything into `dist/`:
 
 | File | Contents |
 |---|---|
-| `BatteryControl-1.0.0.pkg` | App + CLI + embedded daemon |
-| `BatteryControlCLI-1.0.0.pkg` | Just the CLI, no daemon |
-| `BatteryControl-1.0.0.zip` | The app + CLI as a zip |
+| `BatteryControl-1.3.0.pkg` | App + CLI + embedded daemon |
+| `BatteryControlCLI-1.3.0.pkg` | Just the CLI, no daemon |
+| `BatteryControl-1.3.0.zip` | The app + CLI as a zip |
 | `SHA256SUMS` | Hashes of all three |
 
 The script also expands the packages and checks their contents (the CLI package must
@@ -385,14 +389,33 @@ a `SHA256SUMS` file; comparing the hash of what you downloaded takes ten seconds
 
 ## Uninstalling
 
-Use the app: Settings → **Remove Helper…**. That unregisters the daemon, removes it
-from `/Library/PrivilegedHelperTools` and `/Library/LaunchDaemons`, restores macOS
-default charging, and quits. Do this before deleting the app bundle — you don't want a
-launchd job pointing at a missing binary.
+Use Settings → **Uninstall BatteryControl…**. BatteryControl first asks the daemon to
+restore normal charging and verify that state. It then removes the privileged helper,
+LaunchDaemon configuration, root-owned policy/compatibility state, the CLI, and the app.
+It does not claim success until the helper binary, the plist, and the loaded launch job
+are all confirmed gone.
 
-Then delete `/Applications/BatteryControl.app` (and `/usr/local/bin/batterycontrol` if
-you installed the CLI edition). Leftovers, all safe to remove:
-`/var/log/batterycontrol-daemon.log` and `/Library/Application Support/BatteryControl/`.
+You get two data choices:
+
+- **Remove BatteryControl and its local data** removes the app's settings and local event history.
+- **Remove BatteryControl but keep settings/history** preserves user-owned preferences and
+  history; it never preserves credentials, authorization state, or temporary privileged policy.
+
+The CLI-only installation supports the same daemon-owned cleanup with an explicit confirmation:
+
+```sh
+batterycontrol uninstall --confirm
+batterycontrol uninstall --confirm --remove-data
+```
+
+The CLI command removes the privileged daemon, launch configuration, and CLI. If the GUI
+edition is also installed, use the GUI uninstall action to remove the app bundle too.
+Without `--confirm`, the CLI refuses to do anything.
+
+If safe charging restoration or privileged removal cannot be verified, BatteryControl stops
+and explains what remains rather than deleting files blindly. After successful removal,
+macOS and the hardware resume their normal charging management. No administrator password
+is stored and no sudoers entry is created.
 
 ## Troubleshooting
 

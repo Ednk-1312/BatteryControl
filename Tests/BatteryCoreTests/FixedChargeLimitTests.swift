@@ -12,7 +12,7 @@ final class FixedChargeLimitTests: XCTestCase {
         // Includes sub-80% presets: that is the point vs Apple's built-in
         // Charge Limit (80–100%). Every value must stay within the
         // firmware-limit validation bounds (both ≥ 5, gap ≥ 1).
-        XCTAssertEqual(FixedChargeLimit.presetPercents, [60, 70, 75, 80, 85, 90, 95, 100])
+        XCTAssertEqual(FixedChargeLimit.presetPercents, [50, 60, 70, 75, 80, 85, 90, 95, 100])
         for preset in FixedChargeLimit.presetPercents {
             XCTAssertNil(
                 FirmwareLimitValidation.problem(upper: preset, lower: FixedChargeLimit.defaultResumeThreshold(forUpper: preset)),
@@ -26,6 +26,7 @@ final class FixedChargeLimitTests: XCTestCase {
         XCTAssertTrue(FixedChargeLimit.isPreset(100))
         XCTAssertTrue(FixedChargeLimit.isPreset(75))
         XCTAssertTrue(FixedChargeLimit.isPreset(60))
+        XCTAssertTrue(FixedChargeLimit.isPreset(50))
         XCTAssertFalse(FixedChargeLimit.isPreset(65))
         XCTAssertFalse(FixedChargeLimit.isPreset(0))
     }

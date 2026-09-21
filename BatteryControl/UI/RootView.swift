@@ -66,6 +66,7 @@ struct RootView: View {
 struct SetupBanner: View {
 
     @EnvironmentObject private var appState: AppState
+    @State private var showingGuide = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -97,7 +98,7 @@ struct SetupBanner: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(appState.isInstalling)
                 Button("Open Setup Guide") {
-                    appState.route = .dashboard
+                    showingGuide = true
                 }
                 .buttonStyle(.bordered)
             }
@@ -105,6 +106,80 @@ struct SetupBanner: View {
         .padding(14)
         .background(.yellow.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
         .padding([.horizontal, .top])
+        .sheet(isPresented: $showingGuide) {
+            SetupGuideView()
+                .environmentObject(appState)
+                .frame(width: 520, height: 390)
+        }
+    }
+}
+
+/// The setup guide is a real surface rather than a no-op navigation action.
+/// It remains unprivileged; installation still goes through AppState and the
+/// existing authenticated helper-registration flow.
+private struct SetupGuideView: View {
+
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.title)
+                    .foregroundStyle(.blue)
+                Text("Set up BatteryControl")
+                    .font(.title2.weight(.semibold))
+                Spacer()
+                Button("Done") { dismiss() }
+            }
+
+            Text("BatteryControl needs one privileged helper to control charging safely. The helper runs independently in the background, so limits continue working when the window is closed.")
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 10) {
+                setupStep("1", "Click Install Helper below.")
+                setupStep("2", "Approve the administrator prompt from macOS when it appears. BatteryControl never stores your password.")
+                setupStep("3", "Wait for the helper status to show Running, then choose a charge limit in Charging.")
+            }
+
+            if let progress = appState.installProgress {
+                Text(progress)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            if let message = appState.lastAckMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack {
+                Text("Helper: \(appState.helperStatusText)")
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Button(appState.helperStatus == .notInstalled ? "Install Helper" : "Repair Helper") {
+                    appState.installHelper()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(appState.isInstalling)
+            }
+        }
+        .padding(24)
+    }
+
+    private func setupStep(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 22, height: 22)
+                .background(Color.accentColor, in: Circle())
+            Text(text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

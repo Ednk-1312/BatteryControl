@@ -55,6 +55,8 @@ public enum CLIRunner {
             return await compatibilityReport()
         case .databaseInstall(let path):
             return await databaseInstall(path: path)
+        case .uninstall(let confirm, let removeData):
+            return await uninstall(confirm: confirm, removeData: removeData)
         }
     }
 
@@ -345,6 +347,27 @@ public enum CLIRunner {
             Database entries broaden recognition only — every machine is still probed and verified at runtime.
             """, .success)
         }
+    }
+
+    // MARK: - Uninstall
+
+    private static func uninstall(confirm: Bool, removeData: Bool) async -> (String, BatteryControlCLI.ExitCode) {
+        guard confirm else {
+            return ("Uninstall is destructive. Re-run with 'batterycontrol uninstall --confirm' (add --remove-data only if you also want local CLI data removed).", .invalidArguments)
+        }
+        guard let ack = await DaemonXPCClient.shared.uninstallPrivilegedComponents(removeCLI: true), ack.accepted else {
+            return ("Uninstall refused: normal charging could not be verified before privileged removal. Nothing was removed.", .safetyRejection)
+        }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        let helperGone = !BatteryControlUninstallVerification.launchJobExists()
+            && BatteryControlUninstallVerification.privilegedComponentsGone()
+        if removeData {
+            try? FileManager.default.removeItem(at: BatteryControlUserData.applicationSupportURL())
+        }
+        guard helperGone else {
+            return ("Uninstall started but could not verify that the privileged daemon and launch configuration are gone.", .communicationFailure)
+        }
+        return ("BatteryControl's privileged daemon and CLI were removed. macOS/default charging management is now responsible.", .success)
     }
 
     // MARK: - Diagnostics / compatibility

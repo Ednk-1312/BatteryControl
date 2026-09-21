@@ -96,9 +96,9 @@ Constraints:
 
 ## 1.2.0 — daily-use foundations
 
-The first 1.2 work is intentionally conservative. These pieces are now in the
-working tree and use the existing daemon/XPC boundary rather than adding a
-second control path:
+The first 1.2 work is intentionally conservative. These pieces shipped in
+1.2.0 and use the existing daemon/XPC boundary rather than adding a second
+control path:
 
 - **Battery health presentation.** The Info tab labels capacity ratio as an
   estimate, keeps missing values unavailable, and filters malformed telemetry.
@@ -108,8 +108,8 @@ second control path:
 - **Local history.** A bounded, privacy-conscious event store stays on the
   Mac and can be cleared from Settings.
 - **Support bundle.** Diagnostics can export a small sanitized JSON manifest
-  containing the compatibility report and bounded local history. It does not
-  include raw system logs or upload anything.
+  containing the compatibility report, the last daemon-confirmed status, and
+  bounded local history. It does not include raw system logs or upload anything.
 
 Still deliberately deferred for a later 1.2.x pass:
 
@@ -135,7 +135,7 @@ Still deliberately deferred for a later 1.2.x pass:
 ## Release discipline carried forward from 1.0.2
 
 - Every compatibility statement in docs and UI matches the evidence tiers.
-- The full suite (267 tests after 1.1.0) stays green, zero warnings, Release
-  build clean, and the M3 verified profile is physically re-validated before
-  any 1.1 release is cut.
-- A 1.1.x release that would need to weaken a safety property to ship, waits.
+- The full suite stays green, with zero actual compiler warnings and a clean
+  Release build. The M3 verified profile is physically re-validated before a
+  release is cut.
+- A release that would need to weaken a safety property to ship, waits.

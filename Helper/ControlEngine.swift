@@ -841,6 +841,45 @@ final class ControlEngine {
         }
     }
 
+    /// Restore macOS/default charging before privileged removal. This is
+    /// deliberately daemon-owned so uninstall cannot leave bfF0 active or
+    /// leave an adapter cut latched behind.
+    func prepareForUninstall() -> Bool {
+        locked {
+            store.update {
+                $0.calibration = nil
+                $0.override = .none
+                if let previous = $0.overridePreviousPolicy { $0.policy = previous }
+                $0.overrideExpiresAt = nil
+                $0.overridePreviousPolicy = nil
+                $0.policy = .passthrough()
+            }
+            // Configure the selected backend directly so a firmware limit is
+            // deactivated and read back before the daemon is removed. Do not
+            // require the battery gauge to begin charging immediately: at a
+            // high state of charge macOS may legitimately remain not-charging
+            // even after the control is safely released.
+            let hardwareResult: Result<Void, ControlError>
+            if let configurable = activeBackend as? ChargingPolicyConfigurable {
+                hardwareResult = configurable.configure(
+                    policy: .passthrough(), override: .none, calibrationActive: false
+                )
+            } else {
+                hardwareResult = activeBackend.apply(.normal)
+            }
+            if case .success = hardwareResult {
+                activeBackend.restoreDefaults()
+            }
+            let restored = if case .success = hardwareResult { true } else { false }
+            controlIsVerified = restored
+            appendEvent(
+                kind: restored ? "uninstall safe state restored" : "uninstall restoration failed",
+                detail: restored ? "macOS/default charging verified" : "charging state could not be verified"
+            )
+            return restored
+        }
+    }
+
     func cancelOverrides() -> Bool {
         locked {
             let previous = store.state.overridePreviousPolicy

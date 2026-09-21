@@ -76,6 +76,12 @@ final class CLICommandTests: XCTestCase {
         XCTAssertEqual(try BatteryControlCLI.parse(["discharge", "stop"]), .dischargeStop)
     }
 
+    func testParseUninstallRequiresExplicitConfirmationFlag() throws {
+        XCTAssertEqual(try BatteryControlCLI.parse(["uninstall"]), .uninstall(confirm: false, removeData: false))
+        XCTAssertEqual(try BatteryControlCLI.parse(["uninstall", "--confirm", "--remove-data"]), .uninstall(confirm: true, removeData: true))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["uninstall", "--yes"]))
+    }
+
     func testParseDiagnosticsCompatibilityVersionHelp() throws {
         XCTAssertEqual(try BatteryControlCLI.parse(["update-check"]), .updateCheck)
         XCTAssertEqual(try BatteryControlCLI.parse(["diagnostics"]), .diagnostics)

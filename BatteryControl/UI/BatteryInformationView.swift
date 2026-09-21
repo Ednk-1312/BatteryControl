@@ -262,12 +262,14 @@ struct DiagnosticsView: View {
         Task {
             let compatibility = await DaemonXPCClient.shared.exportCompatibilityReport()
             let diagnostics = await DaemonXPCClient.shared.runDiagnostics()
+            let status = await DaemonXPCClient.shared.getStatus()
             let events = diagnostics?.recentEvents.isEmpty == false
                 ? diagnostics!.recentEvents
                 : appState.localHistory.snapshot()
             let manifest = SupportBundleManifest(
                 appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
                 compatibilityReport: compatibility,
+                statusSnapshot: status?.snapshot,
                 events: Array(events.suffix(500))
             )
             guard let data = try? manifest.jsonData() else {

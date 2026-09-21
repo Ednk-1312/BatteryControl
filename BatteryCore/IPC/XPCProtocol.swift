@@ -20,6 +20,11 @@ public enum BatteryXPC {
     /// GUI after an in-place upgrade.
     public static let appBundleID = "com.batterycontrol.app"
 
+    /// The standalone CLI's code-signing identifier. Same-team signing is
+    /// still required, but the daemon also pins the identifier so another
+    /// app signed by the developer cannot reuse this privileged interface.
+    public static let cliBundleID = "batterycontrol"
+
     /// Helper install location (the conventional PrivilegedHelperTools dir).
     public static let helperInstallPath = "/Library/PrivilegedHelperTools/com.batterycontrol.daemon"
 
@@ -32,6 +37,10 @@ public enum BatteryXPC {
     /// Helper log file readable by a normal user.
     public static let helperLogPath = "/var/log/batterycontrol-daemon.log"
 
+    /// CLI path installed by the GUI+CLI package. Used only by the narrow
+    /// privileged uninstall operation.
+    public static let cliInstallPath = "/usr/local/bin/batterycontrol"
+
     /// Distributable firmware compatibility database. Ships with releases
     /// and can be updated independently of the app; entries override the
     /// built-in profiles by id. Missing file = built-in profiles only.
@@ -41,7 +50,7 @@ public enum BatteryXPC {
     /// protocol or control logic changes incompatibly; a mismatch is reported
     /// as `HelperStatus.outdated` and offers the repair flow. Kept in sync
     /// with the release artifact version (`scripts/build-release.sh <ver>`).
-    public static let expectedHelperVersion = "1.2.0"
+    public static let expectedHelperVersion = "1.3.0"
 }
 
 /// Root XPC message envelope. One struct per operation keeps the protocol

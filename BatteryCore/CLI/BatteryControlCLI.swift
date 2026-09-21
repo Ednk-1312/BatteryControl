@@ -49,6 +49,8 @@ public enum BatteryControlCLI {
         /// `database install <file>` — hand a validated database JSON to
         /// the daemon (the only writer of the root-owned file).
         case databaseInstall(path: String)
+        /// Remove the privileged daemon and CLI. Requires explicit confirmation.
+        case uninstall(confirm: Bool, removeData: Bool)
         case version
         /// `update-check` — opt-in passive query of the latest GitHub
         /// release. Nothing is downloaded or installed.
@@ -152,6 +154,18 @@ public enum BatteryControlCLI {
             default:
                 throw UsageError("unknown 'calibration' subcommand — expected status, start, or cancel")
             }
+
+        case "uninstall":
+            var confirm = false
+            var removeData = false
+            for arg in rest {
+                switch arg {
+                case "--confirm": confirm = true
+                case "--remove-data": removeData = true
+                default: throw UsageError("uninstall accepts --confirm and optional --remove-data")
+                }
+            }
+            return .uninstall(confirm: confirm, removeData: removeData)
 
         case "update-check":
             return .updateCheck
@@ -314,6 +328,8 @@ public enum BatteryControlCLI {
       compatibility --report          Machine-evidence JSON for the community
                                       compatibility database (no personal data)
       database install <file>         Install a reviewed compatibility database
+      uninstall --confirm             Remove the privileged daemon and CLI
+        --remove-data                 Also remove CLI-side local data
       version                         Print the CLI and daemon versions
       update-check                    Ask GitHub if a newer release exists
                                       (prints the link; installs nothing)

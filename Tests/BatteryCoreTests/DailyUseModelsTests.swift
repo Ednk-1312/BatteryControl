@@ -42,12 +42,15 @@ final class DailyUseModelsTests: XCTestCase {
     func testNamedPresetsUseExistingPolicyShape() {
         XCTAssertEqual(ChargePreset.daily.policy, FixedChargeLimit.policy(upper: 80, resume: 70))
         XCTAssertEqual(ChargePreset.batterySaver.policy, FixedChargeLimit.policy(upper: 70, resume: 60))
+        XCTAssertEqual(ChargePreset.chronicallyPluggedIn.policy, FixedChargeLimit.policy(upper: 50))
+        XCTAssertTrue(ChargePreset.chronicallyPluggedIn.explanation.contains("high voltage"))
         XCTAssertEqual(ChargePreset.fullCharge.policy, ChargingPolicy.passthrough())
         XCTAssertNil(ChargePreset.custom.policy)
     }
 
     func testPresetMatchingDoesNotConfuseCustomPolicy() {
         XCTAssertEqual(ChargePreset.matching(policy: FixedChargeLimit.policy(upper: 80, resume: 70)), .daily)
+        XCTAssertEqual(ChargePreset.matching(policy: FixedChargeLimit.policy(upper: 50)), .chronicallyPluggedIn)
         XCTAssertEqual(ChargePreset.matching(policy: FixedChargeLimit.policy(upper: 66, resume: 55)), .custom)
         XCTAssertEqual(ChargePreset.matching(policy: .passthrough()), .fullCharge)
     }
@@ -126,13 +129,31 @@ final class DailyUseModelsTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.kind == "hardware capability changed" })
     }
 
+    func testUninstallDataChoiceIsExplicit() {
+        XCTAssertEqual(UninstallDataChoice.allCases.count, 2)
+        XCTAssertEqual(UninstallDataChoice.removeData.title, "Remove BatteryControl and its local data")
+        XCTAssertEqual(UninstallDataChoice.keepData.title, "Remove BatteryControl but keep settings/history")
+    }
+
+    func testUninstallRequestDefaultsToRemovingPrivilegedCLIComponent() {
+        XCTAssertEqual(UninstallRequest(), UninstallRequest(removeCLI: true))
+    }
+
     func testSupportBundleContainsOnlyDeclaredContent() throws {
         let event = BatteryControlEvent(kind: "limit changed", detail: "80%")
-        let bundle = SupportBundleManifest(appVersion: "1.2.0", compatibilityReport: nil, events: [event])
+        let bundle = SupportBundleManifest(appVersion: "1.3.0", compatibilityReport: nil, events: [event])
         let object = try JSONSerialization.jsonObject(with: bundle.jsonData()) as? [String: Any]
         XCTAssertEqual(object?.keys.sorted(), ["appVersion", "events"])
         let json = String(data: try bundle.jsonData(), encoding: .utf8)!
         XCTAssertFalse(json.contains("/Users/"))
         XCTAssertFalse(json.contains("serial"))
+    }
+
+    func testSupportBundleRedactsUserPathLikeEventDetails() throws {
+        let event = BatteryControlEvent(kind: "diagnostic", detail: "opened /Users/alice/private-notes.txt")
+        let bundle = SupportBundleManifest(appVersion: "1.3.0", compatibilityReport: nil, events: [event])
+        let json = String(data: try bundle.jsonData(), encoding: .utf8)!
+        XCTAssertFalse(json.contains("alice"))
+        XCTAssertTrue(json.contains("<redacted>"))
     }
 }
