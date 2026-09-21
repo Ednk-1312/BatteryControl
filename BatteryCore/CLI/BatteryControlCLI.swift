@@ -36,7 +36,7 @@ public enum BatteryControlCLI {
         case dischargeStatus
         case dischargeStart(target: Int, floor: Int?, belowFloorConsent: Bool)
         case dischargeStop
-        case chargeStart(target: Int?)
+        case chargeStart(target: Int?, durationSeconds: TimeInterval?)
         case chargeStop
         case calibrationStatus
         case calibrationStart
@@ -259,19 +259,30 @@ public enum BatteryControlCLI {
         return .dischargeStart(target: positional[0], floor: floor, belowFloorConsent: consent)
     }
 
-    /// `charge start [pct]` — the target is optional and defaults to 100.
-    /// Bounds are the daemon's job, as everywhere else.
+    /// `charge start [pct] [--for 1h|2h]` — the target defaults to 100.
+    /// The daemon owns the deadline; clients cannot create arbitrary durations.
     private static func parseChargeStart(_ args: [String]) throws -> Command {
-        guard args.count <= 1 else {
-            throw UsageError("charge start expects at most one percentage, e.g. 'charge start 90'")
+        var target: Int?
+        var duration: TimeInterval?
+        var index = 0
+        while index < args.count {
+            if args[index] == "--for" {
+                guard index + 1 < args.count else { throw UsageError("--for requires 1h or 2h") }
+                switch args[index + 1] {
+                case "1h": duration = 3600
+                case "2h": duration = 7200
+                default: throw UsageError("--for accepts only 1h or 2h")
+                }
+                index += 2
+            } else {
+                guard target == nil, let value = Int(args[index]) else {
+                    throw UsageError("charge start expects one percentage and optional --for 1h|2h")
+                }
+                target = value
+                index += 1
+            }
         }
-        guard let target = args.first else {
-            return .chargeStart(target: nil)
-        }
-        guard let value = Int(target) else {
-            throw UsageError("unexpected argument '\(target)' — charge start expects a percentage")
-        }
-        return .chargeStart(target: value)
+        return .chargeStart(target: target, durationSeconds: duration)
     }
 
     // MARK: - Help
@@ -293,6 +304,7 @@ public enum BatteryControlCLI {
         --allow-below-floor           DANGEROUS: allows draining below 20%
       discharge stop                  Stop an active discharge
       charge start [pct]              Charge past the limit to <pct> (default 100)
+        --for 1h|2h                   End the override after that daemon-owned lifetime
       charge stop                     Stop a force-charge and restore the limit
       calibration status              Guided gauge-calibration session state
       calibration start               Begin the full calibration cycle

@@ -94,21 +94,30 @@ Constraints:
 - Decided: default on with a visible setting (the audience expects a plain
   link, not silence); disabling it stops all update-related requests.
 
-## 1.1.x — later in the series, if 1.1.0 lands clean
+## 1.2.0 — daily-use foundations
 
-- **Session history.** Discharge and force-charge sessions are already logged
-  in daemon diagnostics; surface them in the GUI ("what happened overnight")
-  instead of making users read logs.
-- **Honest-state notifications.** Reuse `DiagnosticEntry` severity: discharge
-  target reached, limit deactivated after a verification failure, helper
-  outdated. Only states the daemon verified — never notify on guesses.
-- **Menu bar quick actions.** Limit presets directly from the menu, using the
-  same XPC path as everything else.
-- **Battery health display fixes.** The Info tab's capacity/health math
-  produced confusing numbers during earlier testing (misleading "service
-  recommended" style output). Investigate IOKit capacity semantics and either
-  present Apple-consistent values or clearly labeled estimates — whatever the
-  data actually supports.
+The first 1.2 work is intentionally conservative. These pieces are now in the
+working tree and use the existing daemon/XPC boundary rather than adding a
+second control path:
+
+- **Battery health presentation.** The Info tab labels capacity ratio as an
+  estimate, keeps missing values unavailable, and filters malformed telemetry.
+- **Named presets.** Daily (80/70), Battery Saver (70/60), Full Charge, and
+  Custom all map to the existing validated policy engine. The menu bar exposes
+  the same actions through AppState/XPC.
+- **Local history.** A bounded, privacy-conscious event store stays on the
+  Mac and can be cleared from Settings.
+- **Support bundle.** Diagnostics can export a small sanitized JSON manifest
+  containing the compatibility report and bounded local history. It does not
+  include raw system logs or upload anything.
+
+Still deliberately deferred for a later 1.2.x pass:
+
+- **Native Apple optimization status.** BatteryControl observes the native
+  charge-limit state where the existing telemetry can prove it, but it does
+  not infer Optimized Battery Charging or compete with Apple's controller.
+- **Honest-state notifications.** Reuse `DiagnosticEntry` severity only after
+  a user-notification policy is designed and tested.
 
 ## Explicitly deferred (and why)
 

@@ -71,6 +71,16 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Local history") {
+                Text("BatteryControl keeps a bounded list of factual control events on this Mac. It is not uploaded and does not include usernames, serial numbers, or raw system logs.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                LabeledContent("Events stored", value: "\(appState.localHistory.snapshot().count)")
+                Button("Clear Local History", role: .destructive) {
+                    appState.clearLocalHistory()
+                }
+            }
+
             Section("Updates") {
                 Toggle("Check for updates (daily, passive)", isOn: Binding(
                     get: { appState.updateCheckEnabled },

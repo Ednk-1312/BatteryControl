@@ -214,13 +214,23 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
             reply(ack(false, "Malformed force-charge request."))
             return
         }
-        let ok = engine.startForceCharge(targetPercent: request.targetPercent)
-        reply(ack(ok, ok ? "Charging to \(request.targetPercent)%; the normal limit resumes afterwards." : "Force charge could not be started."))
+        if let duration = request.durationSeconds, duration != 3600 && duration != 7200 {
+            reply(ack(false, "Temporary charge duration must be 1 hour or 2 hours."))
+            return
+        }
+        let ok = engine.startForceCharge(
+            targetPercent: request.targetPercent,
+            durationSeconds: request.durationSeconds
+        )
+        let durationText = request.durationSeconds.map { " for \(Int($0 / 3600)) hour(s)" } ?? " until the target is reached"
+        reply(ack(ok, ok ? "Charging to \(request.targetPercent)%\(durationText); the normal limit resumes afterwards." : "Force charge could not be started."))
     }
 
     func cancelOverrides(withReply reply: @escaping (XPCEnvelope?) -> Void) {
-        engine.cancelOverrides()
-        reply(ack(true, "Overrides cancelled; the normal charging policy is in effect."))
+        let restored = engine.cancelOverrides()
+        reply(ack(restored, restored
+            ? "Overrides cancelled; the normal charging policy is in effect."
+            : "The override ended, but the previous policy could not be restored; check Diagnostics."))
     }
 
     func beginCalibration(withReply reply: @escaping (XPCEnvelope?) -> Void) {

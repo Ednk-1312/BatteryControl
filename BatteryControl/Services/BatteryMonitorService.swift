@@ -60,6 +60,9 @@ final class AppState: ObservableObject {
     @Published var installProgress: String?
     @Published var isInstalling = false
 
+    /// Daily-use local history is bounded and never leaves this Mac.
+    @Published private(set) var localHistory: LocalEventHistory
+
     /// Set at launch: this process predates the app bundle now on disk (an
     /// in-place upgrade happened while it ran). The daemon will keep
     /// rejecting this process's XPC connections — the UI must offer a
@@ -146,6 +149,7 @@ final class AppState: ObservableObject {
 
     init() {
         platform = PlatformDetector.detect()
+        localHistory = Self.loadLocalHistory()
         isStaleProcess = Self.detectStaleProcess()
         // Registration-only status: never blocks the main thread on XPC
         // (the blocking probe previously stalled launch up to ~3s when the
@@ -202,6 +206,52 @@ final class AppState: ObservableObject {
 
     var effectiveReadings: BatteryReadings {
         snapshot?.readings ?? batteryMonitor.readings ?? .placeholder
+    }
+
+    var healthSummary: BatteryHealthSummary {
+        BatteryHealthSummary(readings: effectiveReadings)
+    }
+
+    var selectedPreset: ChargePreset {
+        guard let policy = snapshot?.activePolicy else { return .custom }
+        return ChargePreset.matching(policy: policy)
+    }
+
+    func apply(preset: ChargePreset) {
+        guard let policy = preset.policy else { return }
+        // The transition is recorded only after the daemon reports the new
+        // policy in a status snapshot; selecting a button is not evidence of
+        // a successful hardware operation.
+        apply(policy: policy)
+    }
+
+    func recordEvent(_ kind: String, detail: String) {
+        localHistory.append(BatteryControlEvent(kind: kind, detail: detail))
+        persistLocalHistory()
+    }
+
+    func clearLocalHistory() {
+        localHistory.clear()
+        persistLocalHistory()
+    }
+
+    private static let historyURL: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("BatteryControl", isDirectory: true).appendingPathComponent("events.json")
+    }()
+
+    private static func loadLocalHistory() -> LocalEventHistory {
+        guard let data = try? Data(contentsOf: historyURL) else { return LocalEventHistory() }
+        return LocalEventHistory.decode(data)
+    }
+
+    private func persistLocalHistory() {
+        guard let data = try? localHistory.encodedData() else { return }
+        let url = Self.historyURL
+        DispatchQueue.global(qos: .utility).async {
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     /// Concise policy summary for the menu bar. States the user's charge
@@ -288,8 +338,15 @@ final class AppState: ObservableObject {
         // Only publish real changes: assigning an equal value to @Published
         // still fires objectWillChange, so an idle machine would invalidate
         // every SwiftUI view every poll forever. Equal snapshots are the
-        // common case; skipping them makes idle GUI cost ~zero.
-        if snapshot != response.snapshot {
+        // common case; skipping them makes idle GUI cost ~zero. History is
+        // derived from the same authoritative snapshot transition, not from
+        // the polling cadence.
+        if snapshot == nil || !(snapshot?.meaningfullyEquals(response.snapshot) ?? false) {
+            let events = EventTransitions.events(from: snapshot, to: response.snapshot)
+            if !events.isEmpty {
+                for event in events { localHistory.append(event) }
+                persistLocalHistory()
+            }
             snapshot = response.snapshot
         }
         let nextHelperStatus: HelperStatus = response.daemonVersion != BatteryXPC.expectedHelperVersion ? .outdated : .running
@@ -354,9 +411,12 @@ final class AppState: ObservableObject {
         }
     }
 
-    func startForceCharge(target: Int) {
+    func startForceCharge(target: Int, durationSeconds: TimeInterval? = nil) {
         Task {
-            let ack = await DaemonXPCClient.shared.startForceCharge(targetPercent: target)
+            let ack = await DaemonXPCClient.shared.startForceCharge(
+                targetPercent: target,
+                durationSeconds: durationSeconds
+            )
             present(ack: ack)
         }
     }

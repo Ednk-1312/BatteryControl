@@ -69,6 +69,7 @@ struct ChargingSettingsView: View {
     @ViewBuilder
     private var modeSections: some View {
         if settingsMode == .fixedLimit {
+            presetsSection
             fixedLimitSections
         } else if settingsMode == .advanced {
             advancedSections
@@ -102,6 +103,41 @@ struct ChargingSettingsView: View {
     private var showsOverrideCancel: Bool {
         appState.snapshot?.isForceCharging == true
             || appState.snapshot?.isForceDischarging == true
+    }
+
+    // MARK: Daily-use presets
+
+    private var presetsSection: some View {
+        Section("Presets") {
+            ForEach(ChargePreset.allCases, id: \.self) { preset in
+                Button {
+                    if let policy = preset.policy {
+                        limitPercent = policy.upperLimit
+                        resumePercent = policy.lowerLimit
+                        customResumeEnabled = preset == .custom
+                        if preset != .custom { appState.apply(preset: preset) }
+                    }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(preset.title)
+                            Text(preset.explanation)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if appState.selectedPreset == preset {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Presets use the same verified policy path as custom settings. A preset is not shown as active until the daemon confirms the hardware state.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Fixed Charge Limit

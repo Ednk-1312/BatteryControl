@@ -58,12 +58,12 @@ final class CLICommandTests: XCTestCase {
     func testParseChargeStartAndStop() throws {
         XCTAssertEqual(
             try BatteryControlCLI.parse(["charge", "start"]),
-            .chargeStart(target: nil),
+            .chargeStart(target: nil, durationSeconds: nil),
             "No target defaults to 100 at the runner"
         )
         XCTAssertEqual(
             try BatteryControlCLI.parse(["charge", "start", "90"]),
-            .chargeStart(target: 90)
+            .chargeStart(target: 90, durationSeconds: nil)
         )
         XCTAssertEqual(try BatteryControlCLI.parse(["charge", "stop"]), .chargeStop)
         XCTAssertThrowsError(try BatteryControlCLI.parse(["charge"]))
@@ -106,6 +106,11 @@ final class CLICommandTests: XCTestCase {
     func testParseResumeRequiresInteger() {
         XCTAssertThrowsError(try BatteryControlCLI.parse(["limit", "set", "80", "--resume"]))
         XCTAssertThrowsError(try BatteryControlCLI.parse(["limit", "set", "80", "--resume=abc"]))
+    }
+
+    func testParseChargeStartDuration() throws {
+        XCTAssertEqual(try BatteryControlCLI.parse(["charge", "start", "100", "--for", "1h"]), .chargeStart(target: 100, durationSeconds: 3600))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["charge", "start", "100", "--for", "30m"]))
     }
 
     func testParseDischargeStartRequiresExactlyOnePercentage() {

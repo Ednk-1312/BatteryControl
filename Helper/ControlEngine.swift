@@ -313,6 +313,24 @@ final class ControlEngine {
         let state = store.state
         var override = state.override
 
+        // Expiration is evaluated by the daemon's existing 20-second tick,
+        // never by the GUI. An expired override is ended before deciding any
+        // hardware action, so a restart cannot silently extend it.
+        if TemporaryOverrideDecisions.shouldExpire(
+            override: override,
+            expiresAt: state.overrideExpiresAt,
+            now: Date()
+        ) {
+            DaemonLog.info("Temporary force-charge override expired; restoring the saved policy.", operation: "forceCharge")
+            override = .none
+            store.update {
+                $0.override = .none
+                if let previous = $0.overridePreviousPolicy { $0.policy = previous }
+                $0.overrideExpiresAt = nil
+                $0.overridePreviousPolicy = nil
+            }
+        }
+
         let calibrationActive = state.calibration?.isActive ?? false
 
         let action = decideAction(readings: readings, state: state, override: &override)
@@ -393,7 +411,14 @@ final class ControlEngine {
         // Persist the override if the engine resolved it away (target
         // reached, adapter unplugged, force charge finished).
         if override != state.override {
-            store.update { $0.override = override }
+            store.update {
+                $0.override = override
+                if override == .none {
+                    if let previous = $0.overridePreviousPolicy { $0.policy = previous }
+                    $0.overrideExpiresAt = nil
+                    $0.overridePreviousPolicy = nil
+                }
+            }
         }
 
         // A normal-charge decision must never fight a latched adapter cut:
@@ -466,6 +491,7 @@ final class ControlEngine {
                     operation: "forceDischarge"
                 )
                 override = .none
+                appendEvent(kind: "controlled discharge ended", detail: "target or floor reached")
                 controlIsVerified = false
                 return .normal
             }
@@ -486,6 +512,7 @@ final class ControlEngine {
                     operation: "forceCharge"
                 )
                 override = .none
+                appendEvent(kind: "temporary override target reached", detail: "normal policy restored")
                 controlIsVerified = false
             }
         }
@@ -625,6 +652,7 @@ final class ControlEngine {
                 operation: "apply",
                 backend: activeBackend.id.rawValue
             )
+            appendEvent(kind: "hardware verification succeeded", detail: action.displayName)
 
         case .pending:
             controlIsVerified = false
@@ -675,6 +703,15 @@ final class ControlEngine {
             // Re-read and re-verify without re-writing (the write already
             // happened; we are waiting for the state transition to show).
             self.verifyNow(action: action, readings: readings, attemptNumber: self.attemptNumber, reason: reason)
+        }
+    }
+
+    private func appendEvent(kind: String, detail: String) {
+        let event = BatteryControlEvent(kind: kind, detail: detail)
+        store.update { state in
+            guard state.events.last?.kind != event.kind || state.events.last?.detail != event.detail else { return }
+            state.events.append(event)
+            if state.events.count > 500 { state.events.removeFirst(state.events.count - 500) }
         }
     }
 
@@ -744,7 +781,13 @@ final class ControlEngine {
         locked {
             guard isPlatformSupported else { return false }
             guard ControlModeHelpers.validate(policy) == nil else { return false }
-            store.update { $0.policy = policy }
+            store.update {
+                $0.policy = policy
+                // A policy change made during an override is the new policy
+                // the user wants restored, not a stale pre-override value.
+                if $0.override.isChargeOverride { $0.overridePreviousPolicy = policy }
+            }
+            appendEvent(kind: policy.mode == .passthrough ? "charge-limit disabled" : "charge-limit changed", detail: policy.summary)
             tickNow(reason: .userRequest)
             return true
         }
@@ -768,6 +811,7 @@ final class ControlEngine {
                     belowFloorConsent: consented
                 )
             }
+            appendEvent(kind: "controlled discharge started", detail: "target \(target)%, floor \(effectiveFloor)%")
             if consented {
                 DaemonLog.warning(
                     "Force discharge below the safety floor (floor \(effectiveFloor)%, target \(target)%): user accepted accelerated battery degradation.",
@@ -779,21 +823,43 @@ final class ControlEngine {
         }
     }
 
-    func startForceCharge(targetPercent: Int) -> Bool {
+    func startForceCharge(targetPercent: Int, durationSeconds: TimeInterval? = nil) -> Bool {
         locked {
             guard isPlatformSupported else { return false }
+            guard TemporaryOverrideDecisions.isValidDuration(durationSeconds) else { return false }
             let target = min(max(targetPercent, 1), 100)
-            store.update { $0.override = .forceCharge(targetPercent: target) }
+            let duration = TemporaryOverrideDecisions.acceptedDuration(durationSeconds)
+            let current = store.state
+            store.update {
+                $0.overridePreviousPolicy = current.policy
+                $0.overrideExpiresAt = duration.map { Date().addingTimeInterval($0) }
+                $0.override = .forceCharge(targetPercent: target)
+            }
+            appendEvent(kind: "temporary override started", detail: "target \(target)%")
             tickNow(reason: .userRequest)
             return true
         }
     }
 
-    func cancelOverrides() {
+    func cancelOverrides() -> Bool {
         locked {
-            store.update { $0.override = .none }
+            let previous = store.state.overridePreviousPolicy
+            let expectedPolicy = previous ?? store.state.policy
+            store.update {
+                $0.override = .none
+                if let previous = $0.overridePreviousPolicy { $0.policy = previous }
+                $0.overrideExpiresAt = nil
+                $0.overridePreviousPolicy = nil
+            }
+            let restored = store.state.override == .none && store.state.policy == expectedPolicy
+            appendEvent(
+                kind: restored ? "temporary override cancelled" : "restoration failed",
+                detail: restored ? "previous policy restored" : "the saved policy could not be restored"
+            )
+            guard restored else { return false }
             controlIsVerified = false
             tickNow(reason: .userRequest)
+            return true
         }
     }
 
@@ -872,6 +938,7 @@ final class ControlEngine {
                 daemonVersion: daemonVersion,
                 helperUptimeSeconds: uptime,
                 recentLogEntries: DaemonLog.recentEntries(),
+                recentEvents: store.state.events,
                 firmwareProfileTier: firmwareProfileTier.rawValue,
                 firmwareProfileSummary: firmwareProfileSummary,
                 nativeChargeLimit: nativeChargeLimit

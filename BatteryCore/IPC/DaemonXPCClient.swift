@@ -181,8 +181,8 @@ public final class DaemonXPCClient: @unchecked Sendable {
         }
     }
 
-    public func startForceCharge(targetPercent: Int) async -> OperationAck? {
-        let request = StartForceChargeRequest(targetPercent: targetPercent)
+    public func startForceCharge(targetPercent: Int, durationSeconds: TimeInterval? = nil) async -> OperationAck? {
+        let request = StartForceChargeRequest(targetPercent: targetPercent, durationSeconds: durationSeconds)
         return await sendAck(request, kind: XPCEnvelope.kindForceCharge) { proxy, envelope, reply in
             proxy.startForceCharge(envelope, withReply: reply)
         }

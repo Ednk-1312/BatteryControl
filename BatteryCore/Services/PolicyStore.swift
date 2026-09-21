@@ -9,8 +9,49 @@ public final class PolicyStore {
     public struct StoredState: Codable, Equatable {
         public var policy: ChargingPolicy
         public var override: PolicyOverride
+        /// Daemon-owned deadline for a temporary charge override. Nil means
+        /// until target or manual cancellation.
+        public var overrideExpiresAt: Date?
+        /// Retained explicitly so a future override implementation can never
+        /// guess what policy to restore after a restart.
+        public var overridePreviousPolicy: ChargingPolicy?
         public var calibration: CalibrationSession?
+        /// Bounded daemon-owned factual transitions for support export.
+        public var events: [BatteryControlEvent]
         public var updatedAt: Date
+
+        public init(
+            policy: ChargingPolicy,
+            override: PolicyOverride = .none,
+            overrideExpiresAt: Date? = nil,
+            overridePreviousPolicy: ChargingPolicy? = nil,
+            calibration: CalibrationSession? = nil,
+            events: [BatteryControlEvent] = [],
+            updatedAt: Date = Date()
+        ) {
+            self.policy = policy
+            self.override = override
+            self.overrideExpiresAt = overrideExpiresAt
+            self.overridePreviousPolicy = overridePreviousPolicy
+            self.calibration = calibration
+            self.events = Array(events.suffix(500))
+            self.updatedAt = updatedAt
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case policy, override, overrideExpiresAt, overridePreviousPolicy, calibration, events, updatedAt
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            policy = try c.decode(ChargingPolicy.self, forKey: .policy)
+            override = try c.decode(PolicyOverride.self, forKey: .override)
+            overrideExpiresAt = try c.decodeIfPresent(Date.self, forKey: .overrideExpiresAt)
+            overridePreviousPolicy = try c.decodeIfPresent(ChargingPolicy.self, forKey: .overridePreviousPolicy)
+            calibration = try c.decodeIfPresent(CalibrationSession.self, forKey: .calibration)
+            events = Array((try c.decodeIfPresent([BatteryControlEvent].self, forKey: .events) ?? []).suffix(500))
+            updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        }
     }
 
     /// The production store path. Tests inject their own (temp directory) so

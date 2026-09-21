@@ -41,7 +41,7 @@ public enum BatteryXPC {
     /// protocol or control logic changes incompatibly; a mismatch is reported
     /// as `HelperStatus.outdated` and offers the repair flow. Kept in sync
     /// with the release artifact version (`scripts/build-release.sh <ver>`).
-    public static let expectedHelperVersion = "1.1.1"
+    public static let expectedHelperVersion = "1.2.0"
 }
 
 /// Root XPC message envelope. One struct per operation keeps the protocol
@@ -105,9 +105,12 @@ public struct StartForceDischargeRequest: Codable, Equatable, Sendable {
 
 public struct StartForceChargeRequest: Codable, Equatable, Sendable {
     public var targetPercent: Int
+    /// Optional daemon-owned lifetime. Nil means until target or cancellation.
+    public var durationSeconds: TimeInterval?
 
-    public init(targetPercent: Int) {
+    public init(targetPercent: Int, durationSeconds: TimeInterval? = nil) {
         self.targetPercent = targetPercent
+        self.durationSeconds = durationSeconds
     }
 }
 
@@ -134,6 +137,8 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
     public var daemonVersion: String
     public var helperUptimeSeconds: TimeInterval
     public var recentLogEntries: [DiagnosticEntry]
+    /// Bounded daemon-owned factual transitions, separate from raw logs.
+    public var recentEvents: [BatteryControlEvent]
     /// Confidence tier from the firmware compatibility library
     /// (verified / compatibleByCapability / untested / unsupported).
     public var firmwareProfileTier: String?
@@ -156,6 +161,7 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
         daemonVersion: String,
         helperUptimeSeconds: TimeInterval,
         recentLogEntries: [DiagnosticEntry],
+        recentEvents: [BatteryControlEvent] = [],
         firmwareProfileTier: String? = nil,
         firmwareProfileSummary: String? = nil,
         nativeChargeLimit: NativeChargeLimitState? = nil
@@ -172,6 +178,7 @@ public struct DiagnosticsReport: Codable, Equatable, Sendable {
         self.daemonVersion = daemonVersion
         self.helperUptimeSeconds = helperUptimeSeconds
         self.recentLogEntries = recentLogEntries
+        self.recentEvents = Array(recentEvents.suffix(500))
         self.firmwareProfileTier = firmwareProfileTier
         self.firmwareProfileSummary = firmwareProfileSummary
         self.nativeChargeLimit = nativeChargeLimit

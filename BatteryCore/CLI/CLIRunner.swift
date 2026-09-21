@@ -35,8 +35,8 @@ public enum CLIRunner {
             return await dischargeStart(target: target, floor: floor, consent: consent)
         case .dischargeStop:
             return await dischargeStop()
-        case .chargeStart(let target):
-            return await chargeStart(target: target)
+        case .chargeStart(let target, let durationSeconds):
+            return await chargeStart(target: target, durationSeconds: durationSeconds)
         case .chargeStop:
             return await chargeStop()
         case .calibrationStatus:
@@ -61,10 +61,13 @@ public enum CLIRunner {
     // MARK: - Version
 
     private static func version() async -> (String, BatteryControlCLI.ExitCode) {
+        // Version is a local metadata query. It must remain useful when the
+        // daemon is absent or being upgraded; status/control commands still
+        // report daemon availability honestly.
         let daemonState = await daemonState()
         switch daemonState {
-        case .unavailable(let explanation):
-            return (explanation, .daemonUnavailable)
+        case .unavailable:
+            return ("BatteryControl CLI \(BatteryXPC.expectedHelperVersion)\nDaemon        unavailable", .success)
         case .available(let response):
             return (cliVersionLine(daemonVersion: response.daemonVersion), .success)
         }
@@ -189,7 +192,7 @@ public enum CLIRunner {
 
     // MARK: - Force charge
 
-    private static func chargeStart(target: Int?) async -> (String, BatteryControlCLI.ExitCode) {
+    private static func chargeStart(target: Int?, durationSeconds: TimeInterval?) async -> (String, BatteryControlCLI.ExitCode) {
         let daemonState = await daemonState()
         switch daemonState {
         case .unavailable(let explanation):
@@ -201,7 +204,10 @@ public enum CLIRunner {
                     "so the command is refused rather than pretending to work."), .safetyRejection)
             }
             let effectiveTarget = target ?? 100
-            guard let ack = await DaemonXPCClient.shared.startForceCharge(targetPercent: effectiveTarget) else {
+            guard let ack = await DaemonXPCClient.shared.startForceCharge(
+                targetPercent: effectiveTarget,
+                durationSeconds: durationSeconds
+            ) else {
                 return (communicationFailure(), .communicationFailure)
             }
             return (renderAck(ack), ack.accepted ? .success : .safetyRejection)

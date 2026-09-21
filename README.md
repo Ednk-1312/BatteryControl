@@ -19,9 +19,16 @@ the hardware work; the app and CLI just talk to it.
   Limits below 80% are the point — Apple's own built-in Charge Limit only spans 80–100%.
 - **Force discharge.** Cuts adapter input so the Mac runs on battery down to a target
   while plugged in. Stops at the target, at the 20% floor, on unplug, and before sleep.
-- **Charge to 100%.** One-time override, then the limit comes back.
+- **Charge to 100%.** Temporary daemon-owned override. It ends when the target is reached,
+  when cancelled, or after a selected 1-hour/2-hour lifetime; the saved policy is restored.
 - **Calibration.** Guided full-cycle gauge refresh. This retrains the gauge's estimate;
   it does not repair the battery.
+- **Battery health.** Charge state, cycle count, temperature, capacity values, and a clearly
+  labeled capacity-ratio estimate when the underlying telemetry is available.
+- **Daily presets.** Daily (80/70), Battery Saver (70/60), Full Charge, and Custom. Presets
+  use the same daemon path as manual limits and are not shown as active before verification.
+- **Local history and support bundle.** A bounded, local-only event list and a sanitized JSON
+  bundle for troubleshooting. Nothing is uploaded.
 - **Diagnostics.** What backend your Mac uses, whether control is verified right now,
   and an anonymized hardware report you can submit to the compatibility database.
 
@@ -34,7 +41,7 @@ the hardware work; the app and CLI just talk to it.
 | Fixed target | Holds "about 80%" with a small internal band (±3%) | The dashboard shows the real state, not a fake exact number |
 | Force discharge | Runs on battery down to a target on AC | Slow (~1% per 5–10 min idle); auto-stops at target/floor/unplug/sleep |
 | Below-floor discharge (opt-in) | Red "Remove safety floor" switch allows draining below 20% | Wears the battery out faster. Explicit confirmation required; the daemon checks the consent itself |
-| Charge to 100% | One-time override, then restores the limit | Also ends on unplug |
+| Charge to 100% | Daemon-owned override until target, cancellation, or 1/2-hour deadline | Hardware state is still verified; expired sessions restore the saved policy |
 | Calibration | Discharge to 20% → charge to 100% → hold 3 hours → drop to your limit, with safety aborts | Re-trains the gauge estimate; does not fix physical battery health |
 | Diagnostics | Backend capabilities, verification state, readable log | — |
 
@@ -135,7 +142,9 @@ the daemon.
 - Charging settings: the presets and the lower limit. Setting a limit is one click.
 - Discharge controls: with the safety floor. Below the floor needs the red
   "Remove safety floor" switch plus a confirmation dialog.
-- Diagnostics: detected backend, compatibility tier, verification matrix, recent daemon log.
+- Battery Info: available health telemetry without turning missing values into fake zeros.
+- Diagnostics: detected backend, compatibility tier, verification matrix, recent daemon log,
+  and a sanitized support-bundle export.
 - The app lives in the menu bar, not the Dock. Closing the window is fine. Settings →
   **Show menu bar icon** hides the icon if you want — that's cosmetic, the daemon keeps
   working. If you hide the icon, just launch BatteryControl again to get the window back.
@@ -155,8 +164,9 @@ batterycontrol limit off                  # hand charging back to macOS
 batterycontrol discharge status           # force-discharge session state
 batterycontrol discharge start 60         # run on battery down to 60% while on AC
 batterycontrol discharge stop             # end the discharge, restore adapter input
-batterycontrol charge start               # charge past the limit to 100%
+batterycontrol charge start               # charge past the limit to 100% until target
 batterycontrol charge start 90            # charge past the limit to 90%
+batterycontrol charge start 100 --for 1h   # daemon-owned one-hour override
 batterycontrol charge stop                # end a force-charge, restore the limit
 batterycontrol calibration status         # gauge-calibration session state
 batterycontrol calibration start          # full calibration cycle (discharge → 100% → hold 3h → limit)
@@ -174,9 +184,25 @@ batterycontrol help                       # usage
 draining below the floor. The output warns you it wears the battery out, and the daemon
 enforces the consent requirement itself — a client can't skip it.
 
+The menu bar also exposes 1-hour and 2-hour temporary charge overrides. The daemon stores
+that deadline atomically, so a restart does not extend an expired override. If the saved
+policy cannot be restored, BatteryControl reports the failure instead of claiming success.
+
 Exit codes for scripting: `0` ok, `2` bad arguments, `3` daemon unavailable, `4`
 unsupported hardware, `5` authorization failure, `6` safety rejection, `7` write
 failure, `8` verification failure, `9` communication failure.
+
+## Battery health and history
+
+The Info tab shows telemetry BatteryControl can actually read from AppleSmartBattery. A
+capacity ratio is calculated as full-charge capacity divided by design capacity; it is an
+estimate and is not Apple's private Battery Health value. Missing or malformed telemetry is
+shown as **Unavailable**, not as zero.
+
+A small local event history records control changes, verification outcomes, recovery, and
+session boundaries. It is bounded, stays on this Mac, and can be cleared from Settings. The
+support bundle contains only the compatibility report and this sanitized history; it does not
+upload anything or include raw unrelated system logs.
 
 ## Safety
 

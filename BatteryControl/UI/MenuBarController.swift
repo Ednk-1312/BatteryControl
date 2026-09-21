@@ -162,6 +162,33 @@ final class MenuBarController {
 
         menu.addItem(.separator())
 
+        let presetHeader = NSMenuItem(title: "Charge Presets", action: nil, keyEquivalent: "")
+        presetHeader.isEnabled = false
+        menu.addItem(presetHeader)
+        for preset in [ChargePreset.daily, .batterySaver, .fullCharge] {
+            let item = NSMenuItem(title: preset.title, action: #selector(applyPreset(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset.rawValue
+            item.state = appState?.selectedPreset == preset ? .on : .off
+            menu.addItem(item)
+        }
+        let custom = NSMenuItem(title: "Custom…", action: #selector(openCharging), keyEquivalent: "")
+        custom.target = self
+        menu.addItem(custom)
+        let override = NSMenuItem(title: "Charge to 100% (until target)", action: #selector(chargeToFull), keyEquivalent: "")
+        override.target = self
+        override.isEnabled = appState?.capabilities.supportsForceCharge == true
+        menu.addItem(override)
+        for (title, seconds) in [("Charge to 100% for 1 hour", 3600.0), ("Charge to 100% for 2 hours", 7200.0)] {
+            let item = NSMenuItem(title: title, action: #selector(chargeToFullTimed(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = seconds
+            item.isEnabled = appState?.capabilities.supportsForceCharge == true
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
         let refresh = NSMenuItem(title: "Check Status", action: #selector(checkStatus), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
@@ -181,6 +208,26 @@ final class MenuBarController {
     @objc private func openSettings() {
         NotificationCenter.default.post(name: .openSettingsRequested, object: nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openCharging() {
+        appState?.route = .charging
+        openMainWindow()
+    }
+
+    @objc private func applyPreset(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let preset = ChargePreset(rawValue: raw) else { return }
+        appState?.apply(preset: preset)
+    }
+
+    @objc private func chargeToFull() {
+        appState?.startForceCharge(target: 100)
+    }
+
+    @objc private func chargeToFullTimed(_ sender: NSMenuItem) {
+        guard let seconds = sender.representedObject as? TimeInterval else { return }
+        appState?.startForceCharge(target: 100, durationSeconds: seconds)
     }
 
     @objc private func toggleIconVisibility(_ sender: NSMenuItem) {

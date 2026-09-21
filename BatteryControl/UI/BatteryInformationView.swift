@@ -11,26 +11,24 @@ struct BatteryInformationView: View {
 
     var body: some View {
         Form {
-            Section("Battery") {
-                infoRow("Charge", "\(appState.effectiveReadings.percentage)%")
-                infoRow("Charging", appState.effectiveReadings.isCharging ? "Yes" : "No")
-                infoRow("External power", appState.effectiveReadings.isExternalConnected ? "Connected" : "Not connected")
-                infoRow("Condition", appState.effectiveReadings.condition.displayName)
-                if appState.effectiveReadings.cycleCount > 0 {
-                    infoRow("Cycle count", "\(appState.effectiveReadings.cycleCount)")
+            Section("Battery health") {
+                let health = appState.healthSummary
+                infoRow("Charge", "\(health.chargePercent)%")
+                infoRow("State", health.chargingState)
+                infoRow("Condition", health.condition.displayName)
+                optionalRow("Cycle count", health.cycleCount.map(String.init))
+                optionalRow("Temperature", health.temperatureC.map { String(format: "%.1f °C", $0) })
+                if let ratio = health.capacityRatioPercent {
+                    infoRow("Capacity ratio", "\(ratio)%")
+                    Text("Calculated from full-charge capacity ÷ design capacity. This is not Apple's internal Battery Health percentage.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             Section("Capacity") {
-                if appState.effectiveReadings.maxCapacitymAh > 0 {
-                    infoRow("Full charge capacity", "\(appState.effectiveReadings.maxCapacitymAh) mAh")
-                }
-                if appState.effectiveReadings.designCapacitymAh > 0 {
-                    infoRow("Design capacity", "\(appState.effectiveReadings.designCapacitymAh) mAh")
-                }
-                if let health = appState.effectiveReadings.healthPercent {
-                    infoRow("Health (capacity ratio)", "\(health)%")
-                }
+                optionalRow("Full charge capacity", appState.healthSummary.fullChargeCapacitymAh.map { "\($0) mAh" })
+                optionalRow("Design capacity", appState.healthSummary.designCapacitymAh.map { "\($0) mAh" })
             }
 
             Section("Measurements") {
@@ -86,6 +84,10 @@ struct BatteryInformationView: View {
             Image(systemName: supported ? "checkmark.circle.fill" : "xmark.circle")
                 .foregroundStyle(supported ? .green : .secondary)
         }
+    }
+
+    private func optionalRow(_ title: String, _ value: String?) -> some View {
+        infoRow(title, value ?? "Unavailable")
     }
 
     private func infoRow(_ title: String, _ value: String) -> some View {
@@ -179,6 +181,9 @@ struct DiagnosticsView: View {
                     exportCompatibilityReport()
                 }
                 .disabled(report == nil)
+                Button("Export Support Bundle…") {
+                    exportSupportBundle()
+                }
                 if let exportMessage {
                     Text(exportMessage)
                         .font(.caption)
@@ -249,6 +254,38 @@ struct DiagnosticsView: View {
     // MARK: Compatibility report export
 
     @State private var exportMessage: String?
+
+    /// Writes a small, sanitized JSON support bundle. It contains the same
+    /// compatibility report the daemon already exposes plus bounded local
+    /// factual events; it does not include raw system logs or user files.
+    private func exportSupportBundle() {
+        Task {
+            let compatibility = await DaemonXPCClient.shared.exportCompatibilityReport()
+            let diagnostics = await DaemonXPCClient.shared.runDiagnostics()
+            let events = diagnostics?.recentEvents.isEmpty == false
+                ? diagnostics!.recentEvents
+                : appState.localHistory.snapshot()
+            let manifest = SupportBundleManifest(
+                appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+                compatibilityReport: compatibility,
+                events: Array(events.suffix(500))
+            )
+            guard let data = try? manifest.jsonData() else {
+                exportMessage = "Could not serialize the support bundle."
+                return
+            }
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.json]
+            panel.nameFieldStringValue = "batterycontrol-support-bundle.json"
+            guard panel.runModal() == .OK, let url = panel.url else { return }
+            do {
+                try data.write(to: url, options: .atomic)
+                exportMessage = "Saved sanitized support data to \(url.lastPathComponent)."
+            } catch {
+                exportMessage = "Could not write the support bundle: \(error.localizedDescription)"
+            }
+        }
+    }
 
     /// Generate the machine-evidence report through the daemon and hand the
     /// user a save dialog. Same generator as the CLI and the daemon flag.
