@@ -139,3 +139,13 @@ Still deliberately deferred for a later 1.2.x pass:
   Release build. The M3 verified profile is physically re-validated before a
   release is cut.
 - A release that would need to weaken a safety property to ship, waits.
+
+## Incident record
+
+The duplicate-daemon incident and the post-DFU investigation that traced it
+are documented in
+[Docs/PostDFUIncidentReport.md](Docs/PostDFUIncidentReport.md). Its standing
+rule: never manually launch the privileged daemon; launchd owns it. The
+hardening ideas from that report (duplicate-instance detection, version
+visibility, cleaner upgrade handling) are candidates for a future pass, not
+evidence of a backend defect.
