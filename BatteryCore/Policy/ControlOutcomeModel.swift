@@ -55,7 +55,7 @@ public struct ControlAttemptResult: Codable, Equatable, Sendable {
     ) {
         self.action = action
         self.backendID = backendID
-        self.verified = false
+        self.verified = verified
         self.verificationDetail = verificationDetail
         self.errorText = errorText
         self.attemptNumber = attemptNumber

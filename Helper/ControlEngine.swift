@@ -392,9 +392,17 @@ final class ControlEngine {
             }
         }
 
-        // Falling edge of a calibration session: re-program the user's
-        // firmware limit (it was deactivated for the full-range session).
-        if calibrationWasActive && !calibrationActive {
+        // Falling edge of a calibration session (cancel, dismissed safety
+        // abort, or natural finish): give back everything the session took.
+        // Re-program the user's firmware limit (it was deactivated for the
+        // full-range session) AND release any adapter cut the discharge
+        // stages latched. While the cut is held, macOS reports the
+        // physically attached charger as absent, so a cancelled calibration
+        // would leave the Mac "not detecting" its charger until the battery
+        // drifted below the resume threshold. Releasing is always the safe
+        // direction: it only restores power the Mac already has.
+        if CalibrationDecisions.sessionJustEnded(previousActive: calibrationWasActive, currentActive: calibrationActive) {
+            SMCChargeControl.releaseAllAdaptersIfNeeded()
             if let configurable = activeBackend as? ChargingPolicyConfigurable {
                 _ = configurable.configure(
                     policy: state.policy,
@@ -638,6 +646,11 @@ final class ControlEngine {
         switch verdict {
         case .verified:
             controlIsVerified = true
+            // A later confirmed state supersedes a transient failed/pending
+            // attempt. Keep the raw diagnostic log for forensics, but do not
+            // expose an old error as the current recovery state in status or
+            // the GUI after hardware verification has succeeded.
+            lastError = nil
             attemptNumber = 0
             writeAttemptsForCurrentAction = 0
             lastAttempt = ControlAttemptResult(
@@ -796,8 +809,10 @@ final class ControlEngine {
     func startForceDischarge(targetPercent: Int, floorPercent: Int, belowFloorConsent: Bool = false) -> Bool {
         locked {
             guard isPlatformSupported else { return false }
+            guard (1...100).contains(targetPercent),
+                  (1...100).contains(floorPercent) else { return false }
             let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: floorPercent)
-            let target = min(max(targetPercent, 1), 100)
+            let target = targetPercent
             // Never discharge toward a target below the floor.
             guard target >= floor else { return false }
             // Below-safety-floor sessions require explicit user consent; without
@@ -826,8 +841,9 @@ final class ControlEngine {
     func startForceCharge(targetPercent: Int, durationSeconds: TimeInterval? = nil) -> Bool {
         locked {
             guard isPlatformSupported else { return false }
-            guard TemporaryOverrideDecisions.isValidDuration(durationSeconds) else { return false }
-            let target = min(max(targetPercent, 1), 100)
+            guard TemporaryOverrideDecisions.isValidDuration(durationSeconds),
+                  (1...100).contains(targetPercent) else { return false }
+            let target = targetPercent
             let duration = TemporaryOverrideDecisions.acceptedDuration(durationSeconds)
             let current = store.state
             store.update {
@@ -923,6 +939,12 @@ final class ControlEngine {
     func cancelCalibration() {
         locked {
             store.update { $0.calibration = nil }
+            // Cancel must hand the charger back immediately: a discharge
+            // stage may have latched an adapter cut, and while the cut is
+            // held macOS reports the attached charger as absent. Release
+            // before the tick so the user sees the charger return right
+            // away; the tick then re-programs the user's policy as usual.
+            SMCChargeControl.releaseAllAdaptersIfNeeded()
             tickNow(reason: .userRequest)
         }
     }

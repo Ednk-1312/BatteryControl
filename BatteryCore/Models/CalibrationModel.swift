@@ -177,6 +177,19 @@ public enum CalibrationDecisions {
         }
     }
 
+    /// Whether a calibration session ended between the previous and current
+    /// tick (cancel, safety abort, or natural finish). The engine uses this
+    /// falling edge to give back everything the session took: the user's
+    /// firmware limit is re-programmed, and any adapter cut the discharge
+    /// stages latched is released — without it, macOS keeps reporting the
+    /// physically attached charger as absent after a mid-discharge cancel.
+    public static func sessionJustEnded(
+        previousActive: Bool,
+        currentActive: Bool
+    ) -> Bool {
+        previousActive && !currentActive
+    }
+
     /// Which charging action the calibration stage requires right now.
     /// Both discharge stages cut adapter input while on AC; charging stages
     /// restore normal charging.

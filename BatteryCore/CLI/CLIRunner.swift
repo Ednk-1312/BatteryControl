@@ -118,6 +118,12 @@ public enum CLIRunner {
     }
 
     private static func limitSet(upper: Int, resume: Int?) async -> (String, BatteryControlCLI.ExitCode) {
+        guard (5...100).contains(upper) else {
+            return ("Invalid charge limit: choose a percentage from 5 through 100.", .invalidArguments)
+        }
+        if let resume, !(5..<upper).contains(resume) {
+            return ("Invalid resume threshold: it must be 5 through one point below the upper limit.", .invalidArguments)
+        }
         let daemonState = await daemonState()
         switch daemonState {
         case .unavailable(let explanation):
@@ -149,6 +155,12 @@ public enum CLIRunner {
     // MARK: - Discharge
 
     private static func dischargeStart(target: Int, floor: Int?, consent: Bool) async -> (String, BatteryControlCLI.ExitCode) {
+        guard (1...100).contains(target) else {
+            return ("Invalid discharge target: choose a percentage from 1 through 100.", .invalidArguments)
+        }
+        if let floor, !(1...100).contains(floor) {
+            return ("Invalid discharge floor: choose a percentage from 1 through 100.", .invalidArguments)
+        }
         let daemonState = await daemonState()
         switch daemonState {
         case .unavailable(let explanation):
@@ -195,6 +207,10 @@ public enum CLIRunner {
     // MARK: - Force charge
 
     private static func chargeStart(target: Int?, durationSeconds: TimeInterval?) async -> (String, BatteryControlCLI.ExitCode) {
+        let effectiveTarget = target ?? 100
+        guard (1...100).contains(effectiveTarget) else {
+            return ("Invalid charge target: choose a percentage from 1 through 100.", .invalidArguments)
+        }
         let daemonState = await daemonState()
         switch daemonState {
         case .unavailable(let explanation):
@@ -205,7 +221,6 @@ public enum CLIRunner {
                     "The active backend on this machine cannot verify force charge, " +
                     "so the command is refused rather than pretending to work."), .safetyRejection)
             }
-            let effectiveTarget = target ?? 100
             guard let ack = await DaemonXPCClient.shared.startForceCharge(
                 targetPercent: effectiveTarget,
                 durationSeconds: durationSeconds

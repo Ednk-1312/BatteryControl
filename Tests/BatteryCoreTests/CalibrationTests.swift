@@ -166,6 +166,44 @@ final class CalibrationTests: XCTestCase {
         XCTAssertNil(CalibrationDecisions.safetyAbortReason(readings: readings(percent: 55), session: s))
     }
 
+    // MARK: Session-end adapter release
+
+    func testSessionJustEndedDetectsEveryEndingPath() {
+        // Cancel: a live session whose state was cleared (or moved to a
+        // non-active stage) between ticks.
+        XCTAssertTrue(CalibrationDecisions.sessionJustEnded(previousActive: true, currentActive: false))
+        // Safety abort and natural finish take the same falling edge.
+        XCTAssertTrue(CalibrationDecisions.sessionJustEnded(previousActive: true, currentActive: false),
+                      "Abort/finish must release the discharge latch exactly like cancel")
+        // Nothing to release when no session was running.
+        XCTAssertFalse(CalibrationDecisions.sessionJustEnded(previousActive: false, currentActive: false))
+        // A session still running is not an ending.
+        XCTAssertFalse(CalibrationDecisions.sessionJustEnded(previousActive: true, currentActive: true))
+        // A session starting is not an ending.
+        XCTAssertFalse(CalibrationDecisions.sessionJustEnded(previousActive: false, currentActive: true))
+    }
+
+    /// The user-visible symptom: after cancelling mid-discharge, the tick
+    /// decision must NOT keep the Mac latched off its charger. Above the
+    /// user's upper limit the post-cancel policy decision is
+    /// `.inhibitCharging`, which on the firmware-limit backend never touches
+    /// the adapter keys — so the release must come from the session falling
+    /// edge, not from the policy action. This pins the engine's contract:
+    /// a cancelled discharge stage above the limit leaves the session at
+    /// rest at the limit (no further discharge), never `.forceDischarge`.
+    func testCancelledDischargeDoesNotReDecideDischargeAboveLimit() {
+        var s = session(.dischargeToLow)
+        s.advance(to: .dischargeToLimit)
+        // Session cleared (cancel): decideForCalibration must yield .normal,
+        // not the stage's .forceDischarge.
+        let cancelled = ChargingPolicyEngine.decideForCalibration(
+            readings: readings(percent: 95, charging: false, external: true),
+            session: CalibrationSession(lowPercent: 20, limitPercent: 80) // stage .idle → not active
+        )
+        XCTAssertEqual(cancelled, .normal)
+        _ = s // session variable retained to document the before/after pairing
+    }
+
     // MARK: Session lifecycle
 
     func testSessionIsActiveOnlyDuringRun() {

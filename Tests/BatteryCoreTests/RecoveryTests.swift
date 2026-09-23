@@ -77,6 +77,26 @@ final class PolicyCodableTests: XCTestCase {
         XCTAssertEqual(decoded, session)
     }
 
+    func testControlAttemptPreservesVerifiedArgument() {
+        let verified = ControlAttemptResult(
+            action: .inhibitCharging,
+            backendID: BackendID.firmwareLimit.rawValue,
+            verified: true,
+            verificationDetail: "readback matched",
+            attemptNumber: 1
+        )
+        XCTAssertTrue(verified.verified)
+
+        let failed = ControlAttemptResult(
+            action: .inhibitCharging,
+            backendID: BackendID.firmwareLimit.rawValue,
+            verified: false,
+            verificationDetail: "readback did not match",
+            attemptNumber: 1
+        )
+        XCTAssertFalse(failed.verified)
+    }
+
     func testDiagnosticsEntryRoundTrip() throws {
         let entry = DiagnosticEntry(
             severity: .error,

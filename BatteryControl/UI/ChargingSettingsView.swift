@@ -23,7 +23,7 @@ struct ChargingSettingsView: View {
     @State private var advancedHysteresis = true
     @State private var advancedUpper = 80.0
     @State private var advancedLower = 70.0
-    @State private var loadedFromPolicy = false
+    @State private var loadedPolicy: ChargingPolicy?
 
     var body: some View {
         Form {
@@ -389,10 +389,12 @@ struct ChargingSettingsView: View {
     }
 
     private func loadFromCurrentPolicy() {
-        guard !loadedFromPolicy, let policy = appState.snapshot?.activePolicy else { return }
+        guard let policy = appState.snapshot?.activePolicy,
+              policy != loadedPolicy else { return }
         advancedUpper = Double(policy.upperLimit)
         advancedLower = Double(max(policy.lowerLimit, 1))
 
+        loadedPolicy = policy
         switch policy.mode {
         case .passthrough:
             settingsMode = .macOSDefault
@@ -405,6 +407,5 @@ struct ChargingSettingsView: View {
             settingsMode = .advanced
             advancedHysteresis = false
         }
-        loadedFromPolicy = true
     }
 }

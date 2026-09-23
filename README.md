@@ -91,7 +91,7 @@ Two editions, same codebase, same daemon:
 
 To install the GUI edition:
 
-1. Grab `BatteryControl-1.3.0.pkg` from the
+1. Grab `BatteryControl-1.3.1.pkg` from the
    [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest)
    (check it against `SHA256SUMS` if you want).
 2. Run the installer. It puts the app in `/Applications` and the CLI in `/usr/local/bin`.
@@ -355,13 +355,13 @@ so it can be tested without hardware.
 
 ## Release artifacts
 
-`scripts/build-release.sh 1.3.0` builds everything into `dist/`:
+`scripts/build-release.sh 1.3.1` builds everything into `dist/`:
 
 | File | Contents |
 |---|---|
-| `BatteryControl-1.3.0.pkg` | App + CLI + embedded daemon |
-| `BatteryControlCLI-1.3.0.pkg` | Just the CLI, no daemon |
-| `BatteryControl-1.3.0.zip` | The app + CLI as a zip |
+| `BatteryControl-1.3.1.pkg` | App + CLI + embedded daemon |
+| `BatteryControlCLI-1.3.1.pkg` | Just the CLI, no daemon |
+| `BatteryControl-1.3.1.zip` | The app + CLI as a zip |
 | `SHA256SUMS` | Hashes of all three |
 
 The script also expands the packages and checks their contents (the CLI package must

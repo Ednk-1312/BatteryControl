@@ -191,6 +191,11 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
             reply(ack(false, "Malformed force-discharge request."))
             return
         }
+        guard (1...100).contains(request.targetPercent),
+              (1...100).contains(request.floorPercent) else {
+            reply(ack(false, "Force-discharge percentages must be between 1 and 100."))
+            return
+        }
         let floor = ChargingPolicyEngine.effectiveDischargeFloor(requested: request.floorPercent)
         // Consent integrity: a below-safety-floor floor requires the explicit
         // consent flag from the client — and the client must be the app this
@@ -221,6 +226,10 @@ final class RequestHandler: NSObject, BatteryDaemonProtocol {
         }
         if let duration = request.durationSeconds, duration != 3600 && duration != 7200 {
             reply(ack(false, "Temporary charge duration must be 1 hour or 2 hours."))
+            return
+        }
+        guard (1...100).contains(request.targetPercent) else {
+            reply(ack(false, "The force-charge target must be between 1 and 100 percent."))
             return
         }
         let ok = engine.startForceCharge(

@@ -126,6 +126,11 @@ final class SMCInhibitBackend: ChargingBackend {
                     adapter: SMCChargeControl.AdapterValue.cut
                 )
             }
+            // Reassertion must repeat the last successfully verified action.
+            // Without this assignment, the legacy SMC backend's recovery path
+            // always reasserted `.normal` after sleep or daemon recovery,
+            // silently dropping an active inhibit/discharge policy.
+            lastAction = action == .hold ? .inhibitCharging : action
             return .success(())
         } catch let error as SMCError {
             return .failure(ControlError(describe(error)))

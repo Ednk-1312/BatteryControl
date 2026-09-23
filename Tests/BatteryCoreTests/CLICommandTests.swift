@@ -194,8 +194,6 @@ final class CLICommandTests: XCTestCase {
         } else {
             XCTFail("status response must survive envelope round-trip")
         }
-        let render = Mirror(reflecting: CLIRunner.self)
-        _ = render // (rendering is private; drive it through the public path below)
         let expectation = expectation(description: "status path")
         Task {
             let (output, code) = await CLIRunner.run(.status)
@@ -248,5 +246,32 @@ final class CLICommandTests: XCTestCase {
         XCTAssertEqual(BatteryControlCLI.ExitCode.hardwareWriteFailure.rawValue, 7)
         XCTAssertEqual(BatteryControlCLI.ExitCode.verificationFailure.rawValue, 8)
         XCTAssertEqual(BatteryControlCLI.ExitCode.communicationFailure.rawValue, 9)
+    }
+
+    // These are intentionally parser-independent runner tests. The runner
+    // validates ranges before making any daemon request, so a bad command
+    // cannot be silently clamped into a different hardware operation.
+    func testRunnerRejectsOutOfRangeLimitBeforeDaemonRequest() async {
+        let result = await CLIRunner.run(.limitSet(upper: 101, resume: nil))
+        XCTAssertEqual(result.1, .invalidArguments)
+        XCTAssertTrue(result.0.contains("Invalid charge limit"))
+    }
+
+    func testRunnerRejectsInvalidResumeBeforeDaemonRequest() async {
+        let result = await CLIRunner.run(.limitSet(upper: 80, resume: 80))
+        XCTAssertEqual(result.1, .invalidArguments)
+        XCTAssertTrue(result.0.contains("Invalid resume threshold"))
+    }
+
+    func testRunnerRejectsOutOfRangeDischargeBeforeDaemonRequest() async {
+        let result = await CLIRunner.run(.dischargeStart(target: 101, floor: nil, belowFloorConsent: false))
+        XCTAssertEqual(result.1, .invalidArguments)
+        XCTAssertTrue(result.0.contains("Invalid discharge target"))
+    }
+
+    func testRunnerRejectsOutOfRangeForceChargeBeforeDaemonRequest() async {
+        let result = await CLIRunner.run(.chargeStart(target: 101, durationSeconds: nil))
+        XCTAssertEqual(result.1, .invalidArguments)
+        XCTAssertTrue(result.0.contains("Invalid charge target"))
     }
 }

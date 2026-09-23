@@ -48,6 +48,10 @@ final class MenuBarController {
         item.button?.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "BatteryControl")
         item.menu = buildMenu()
         statusItem = item
+        // The icon may have been hidden while the battery state changed;
+        // initialize it from the current snapshot instead of waiting for a
+        // future poll (or leaving a stale generic bolt displayed).
+        updateIcon()
     }
 
     private func remove() {
@@ -55,6 +59,8 @@ final class MenuBarController {
             NSStatusBar.system.removeStatusItem(item)
         }
         statusItem = nil
+        lastMenuKey = nil
+        lastIconSymbol = nil
     }
 
     private func refreshMenu() {
