@@ -33,7 +33,14 @@ final class CLICommandTests: XCTestCase {
     }
 
     func testParseLimitOff() throws {
-        XCTAssertEqual(try BatteryControlCLI.parse(["limit", "off"]), .limitOff)
+        XCTAssertEqual(try BatteryControlCLI.parse(["limit", "off"]), .limitOff(confirm: false))
+        XCTAssertEqual(try BatteryControlCLI.parse(["limit", "off", "--confirm"]), .limitOff(confirm: true))
+    }
+
+    func testParseLimitOffRejectsUnknownArguments() {
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["limit", "off", "--yes"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["limit", "off", "--force"]))
+        XCTAssertThrowsError(try BatteryControlCLI.parse(["limit", "off", "80"]))
     }
 
     func testParseDischargeStatus() throws {
@@ -273,5 +280,124 @@ final class CLICommandTests: XCTestCase {
         let result = await CLIRunner.run(.chargeStart(target: 101, durationSeconds: nil))
         XCTAssertEqual(result.1, .invalidArguments)
         XCTAssertTrue(result.0.contains("Invalid charge target"))
+    }
+
+    // MARK: - limit off acknowledgement (no silent limit removal)
+
+    /// The acknowledgement gate itself, exercised purely: an active limit
+    /// without --confirm must be refused with actionable help; --confirm
+    /// must authorize; an already-disabled limit must need no flag.
+    func testLimitOffRejectionMatrix() {
+        let activeHysteresis = FixedChargeLimit.policy(upper: 80)
+        let activeFixedTarget = ChargingPolicy(mode: .fixedTarget, upperLimit: 70, lowerLimit: 0)
+
+        // Active limit, no confirmation → refused with the exact command to run.
+        for policy in [activeHysteresis, activeFixedTarget] {
+            let rejection = FixedChargeLimit.limitOffRejection(policy: policy, confirm: false)
+            XCTAssertNotNil(rejection)
+            XCTAssertTrue(rejection!.contains("limit off --confirm"))
+            XCTAssertTrue(rejection!.contains(policy.summary))
+        }
+
+        // Explicit confirmation → allowed for every active mode.
+        XCTAssertNil(FixedChargeLimit.limitOffRejection(policy: activeHysteresis, confirm: true))
+        XCTAssertNil(FixedChargeLimit.limitOffRejection(policy: activeFixedTarget, confirm: true))
+
+        // Already disabled → idempotent no-op, no confirmation demanded.
+        XCTAssertNil(FixedChargeLimit.limitOffRejection(policy: .passthrough(), confirm: false))
+        XCTAssertNil(FixedChargeLimit.limitOffRejection(policy: .passthrough(), confirm: true))
+    }
+
+    func testLimitOffChangesStateClassification() {
+        XCTAssertTrue(FixedChargeLimit.limitOffChangesState(FixedChargeLimit.policy(upper: 80)))
+        XCTAssertTrue(FixedChargeLimit.limitOffChangesState(
+            ChargingPolicy(mode: .fixedTarget, upperLimit: 70, lowerLimit: 0)
+        ))
+        XCTAssertFalse(FixedChargeLimit.limitOffChangesState(.passthrough()))
+    }
+
+    /// The runner must consult the daemon's authoritative policy before any
+    /// XPC write. In CI there is no daemon, so the command takes the honest
+    /// daemon-unavailable path — importantly it must fail fast and never
+    /// hang waiting on stdin (no interactive prompt exists by design).
+    func testRunnerLimitOffWithoutDaemonFailsFast() async {
+        let result = await CLIRunner.run(.limitOff(confirm: false))
+        // Either a real daemon answered (dev Mac) or the honest
+        // unavailable classification; both are non-hanging, non-zero paths
+        // when a limit is active and no confirmation was given.
+        if result.1 != .daemonUnavailable {
+            XCTAssertEqual(result.1, .safetyRejection)
+            XCTAssertTrue(result.0.contains("limit off --confirm"))
+        }
+    }
+
+    func testHelpTextDocumentsLimitOffConfirmation() {
+        XCTAssertTrue(BatteryControlCLI.helpText.contains("limit off --confirm"))
+        XCTAssertTrue(BatteryControlCLI.helpText.contains("unattended"))
+    }
+
+    // MARK: - CLI safety model (read-only vs state-changing)
+
+    /// Pins the CLI safety classification exhaustively. The `isReadOnly`
+    /// switch must classify every command; adding a new command without
+    /// deciding its safety breaks this test.
+    func testReadOnlyClassificationCoversEveryCommand() {
+        let readOnly: [BatteryControlCLI.Command] = [
+            .status, .limitStatus, .dischargeStatus, .calibrationStatus,
+            .diagnostics, .compatibility, .compatibilityReport,
+            .version, .updateCheck, .help,
+        ]
+        let stateChanging: [BatteryControlCLI.Command] = [
+            .limitSet(upper: 80, resume: nil),
+            .limitOff(confirm: false),
+            .dischargeStart(target: 60, floor: nil, belowFloorConsent: false),
+            .dischargeStop,
+            .chargeStart(target: nil, durationSeconds: nil),
+            .chargeStop,
+            .calibrationStart,
+            .calibrationCancel,
+            .databaseInstall(path: "db.json"),
+            .uninstall(confirm: false, removeData: false),
+        ]
+        for command in readOnly {
+            XCTAssertTrue(command.isReadOnly, "\(command) must be read-only")
+        }
+        for command in stateChanging {
+            XCTAssertFalse(command.isReadOnly, "\(command) must be classified state-changing")
+        }
+    }
+
+    /// The parser must agree with the classification: read-only commands
+    /// accept no acknowledgement flags; every protected state-changing
+    /// command carries its acknowledgement in the parsed command itself.
+    func testParserCarriesAcknowledgementForProtectedCommands() throws {
+        // limit off: the confirm flag is part of the command value.
+        guard case .limitOff(let confirm) = try BatteryControlCLI.parse(["limit", "off"]) else {
+            return XCTFail("expected limitOff")
+        }
+        XCTAssertFalse(confirm)
+        guard case .limitOff(let confirmed) = try BatteryControlCLI.parse(["limit", "off", "--confirm"]) else {
+            return XCTFail("expected limitOff")
+        }
+        XCTAssertTrue(confirmed)
+        XCTAssertFalse(try BatteryControlCLI.parse(["limit", "off"]).isReadOnly)
+
+        // uninstall: same convention.
+        guard case .uninstall(let uConfirm, _) = try BatteryControlCLI.parse(["uninstall"]) else {
+            return XCTFail("expected uninstall")
+        }
+        XCTAssertFalse(uConfirm)
+
+        // below-floor consent: same convention.
+        guard case .dischargeStart(let target, _, let consent) =
+            try BatteryControlCLI.parse(["discharge", "start", "10", "--allow-below-floor"]) else {
+            return XCTFail("expected dischargeStart")
+        }
+        XCTAssertTrue(consent)
+        XCTAssertEqual(target, 10)
+
+        // Read-only commands parse to themselves with no flags involved.
+        XCTAssertTrue(try BatteryControlCLI.parse(["status"]).isReadOnly)
+        XCTAssertTrue(try BatteryControlCLI.parse(["diagnostics"]).isReadOnly)
     }
 }

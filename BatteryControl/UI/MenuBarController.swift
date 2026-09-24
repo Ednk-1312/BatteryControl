@@ -88,10 +88,21 @@ final class MenuBarController {
             String(snapshot.readings.percentage),
             snapshot.readings.isExternalConnected ? "ac" : "bat",
             appState?.controlSummary ?? "",
-            DashboardSummary.controlStatus(snapshot: snapshot, isSupportedPlatform: true),
+            controlStatusText(snapshot: snapshot),
             icon,
             appState?.needsSetup == true ? "setup" : "",
         ].joined(separator: "|")
+    }
+
+    /// The real platform verdict, not a hardcoded `true`: on an unsupported
+    /// Mac the menu must read "Unsupported" exactly like the dashboard —
+    /// claiming "Active & verified" in the menu bar would be a false
+    /// hardware-state claim on exactly the machines where control is off.
+    private func controlStatusText(snapshot: BatteryStatusSnapshot) -> String {
+        DashboardSummary.controlStatus(
+            snapshot: snapshot,
+            isSupportedPlatform: appState?.isSupported ?? false
+        )
     }
 
     private func updateIcon() {
@@ -131,7 +142,7 @@ final class MenuBarController {
             menu.addItem(statusLine)
 
             let verified = NSMenuItem(
-                title: "Control: \(DashboardSummary.controlStatus(snapshot: snapshot, isSupportedPlatform: true))",
+                title: "Control: \(controlStatusText(snapshot: snapshot))",
                 action: nil,
                 keyEquivalent: ""
             )

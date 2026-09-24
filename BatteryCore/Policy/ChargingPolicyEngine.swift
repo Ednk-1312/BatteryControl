@@ -36,6 +36,20 @@ public enum ChargingPolicyEngine {
         floor < minimumDischargeFloor
     }
 
+    /// The below-floor-consent state a client UI should display, derived
+    /// from the authoritative daemon override. Consent is granted per
+    /// session and dies with it, so the switch is on ONLY while an active
+    /// force discharge itself carries consent — a leftover enabled toggle
+    /// (view re-appeared, previous session ended, user backed out of the
+    /// confirmation) must reset rather than present stale consent as fact.
+    /// Pure so the UI contract is unit-testable.
+    public static func uiConsentState(override: PolicyOverride?, isForceDischarging: Bool) -> Bool {
+        guard isForceDischarging, case .forceDischarge(_, _, let consented) = override else {
+            return false
+        }
+        return consented
+    }
+
     /// Clamp any user-entered percentage into 1...100.
     public static func clampPercent(_ value: Int) -> Int {
         min(max(value, 1), 100)

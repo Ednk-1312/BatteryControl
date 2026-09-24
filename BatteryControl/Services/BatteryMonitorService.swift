@@ -315,6 +315,17 @@ final class AppState: ObservableObject {
     /// completion is always applied (never triggers another re-request).
     private var freshnessRefreshInFlight = false
 
+    /// Staleness is re-checked when a status response disagrees with the
+    /// running process, not only once at launch (§ upgrade-while-running):
+    /// an in-place app upgrade replaces the bundle while the GUI runs, and
+    /// the launch-time detection missed it forever.
+    private func recheckStaleProcessIfNeeded() {
+        guard !isStaleProcess else { return }
+        if Self.detectStaleProcess() {
+            isStaleProcess = true
+        }
+    }
+
     func poll() {
         guard inFlightPoll == nil else { return }
         inFlightPoll = Task { [weak self] in
@@ -361,7 +372,18 @@ final class AppState: ObservableObject {
             }
             snapshot = response.snapshot
         }
-        let nextHelperStatus: HelperStatus = response.daemonVersion != BatteryXPC.expectedHelperVersion ? .outdated : .running
+        // A daemon version below the running app means THIS APP is the
+        // outdated component — typical after an in-place upgrade while the
+        // GUI stayed open. The bundle was replaced under the running
+        // process, so the process is stale too: surface "reopen the app"
+        // (which actually fixes it) instead of "Repair Helper" (which
+        // cannot, because repairing installs what is already installed).
+        recheckStaleProcessIfNeeded()
+        let nextHelperStatus = HelperStatusDerivation.helperStatus(
+            isStaleProcess: isStaleProcess,
+            daemonVersion: response.daemonVersion,
+            expectedVersion: BatteryXPC.expectedHelperVersion
+        )
         if helperStatus != nextHelperStatus {
             helperStatus = nextHelperStatus
         }

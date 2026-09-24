@@ -17,8 +17,9 @@ Status: **blocked on hardware access.** Nothing here is claimed as verified.
 - The daemon observes Apple's limit state read-only from the IOKit battery
   registry each tick. The keys are undocumented; an unreadable state is
   reported as "could not be read", never guessed.
-- BatteryControl never writes Apple's setting. `limit off` restores macOS
-  default charging (including Apple's limit if the user set one).
+- BatteryControl never writes Apple's setting. `limit off` (with
+  `--confirm` while a limit is active) restores macOS default charging
+  (including Apple's limit if the user set one).
 - The CLI `compatibility` output reports who is enforcing what, per state.
 
 ## Open questions only hardware can answer

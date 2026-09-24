@@ -109,13 +109,17 @@ struct ChargingSettingsView: View {
 
     private var presetsSection: some View {
         Section("Presets") {
-            ForEach(ChargePreset.allCases, id: \.self) { preset in
+            // Applied presets only. `ChargePreset.custom` has no policy by
+            // design; rendering it here produced a button that did nothing
+            // when clicked (its `policy` is nil) — custom values live in the
+            // Charge limit / Lower limit controls directly below.
+            ForEach(ChargePreset.applicableCases, id: \.self) { preset in
                 Button {
                     if let policy = preset.policy {
                         limitPercent = policy.upperLimit
                         resumePercent = policy.lowerLimit
-                        customResumeEnabled = preset == .custom
-                        if preset != .custom { appState.apply(preset: preset) }
+                        customResumeEnabled = false
+                        appState.apply(preset: preset)
                     }
                 } label: {
                     HStack {
@@ -134,7 +138,7 @@ struct ChargingSettingsView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("Presets use the same verified policy path as custom settings. A preset is not shown as active until the daemon confirms the hardware state.")
+            Text("Presets use the same verified policy path as custom settings. A preset is not shown as active until the daemon confirms the hardware state. For any other limit, set it in the Charge limit section below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

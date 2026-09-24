@@ -64,6 +64,10 @@ struct DischargeControlsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Discharge")
+        .onAppear(perform: syncConsentWithSession)
+        .onChange(of: appState.snapshot?.activeOverride) { _, _ in
+            syncConsentWithSession()
+        }
         .confirmationDialog(
             "Remove the safety floor?",
             isPresented: $showConsentDialog,
@@ -86,6 +90,24 @@ struct DischargeControlsView: View {
                 return
             }
             showConsentDialog = true
+        }
+    }
+
+    /// The red "floor removed" state in this view is UI-local, but the
+    /// daemon's consent is per-session: it dies with the discharge. If no
+    /// below-floor session is actually running, a leftover enabled switch
+    /// would present stale consent as fact — the next "Start" would then
+    /// request below-floor without the user re-affirming it. Sync the
+    /// switch to the authoritative snapshot: on only while an active
+    /// discharge carries below-floor consent, otherwise off.
+    private func syncConsentWithSession() {
+        let sessionHasConsent = ChargingPolicyEngine.uiConsentState(
+            override: appState.snapshot?.activeOverride,
+            isForceDischarging: appState.snapshot?.isForceDischarging ?? false
+        )
+        if belowFloorEnabled != sessionHasConsent {
+            belowFloorEnabled = sessionHasConsent
+            clampTargetToRange()
         }
     }
 

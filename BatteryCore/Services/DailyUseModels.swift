@@ -89,6 +89,15 @@ public enum ChargePreset: String, Codable, CaseIterable, Sendable {
         if policy == FixedChargeLimit.policy(upper: 50) { return .chronicallyPluggedIn }
         return .custom
     }
+
+    /// Presets that can actually be applied — i.e. every case with a real
+    /// policy. `.custom` is a *classification* of a user-set policy, not an
+    /// applicable preset (its `policy` is nil by design), so preset pickers
+    /// must iterate this list; iterating `allCases` renders a button that
+    /// silently does nothing when clicked.
+    public static var applicableCases: [ChargePreset] {
+        allCases.filter { $0.policy != nil }
+    }
 }
 
 /// A factual local event. It intentionally contains no user identity,

@@ -32,7 +32,11 @@ public enum BatteryControlCLI {
         case status
         case limitStatus
         case limitSet(upper: Int, resume: Int?)
-        case limitOff
+        /// Disable the active charge limit. `confirm` must be explicit when
+        /// a limit is active — an unattended `limit off` must not be able to
+        /// silently remove a deliberate limit (same convention as
+        /// `uninstall --confirm`).
+        case limitOff(confirm: Bool)
         case dischargeStatus
         case dischargeStart(target: Int, floor: Int?, belowFloorConsent: Bool)
         case dischargeStop
@@ -56,6 +60,50 @@ public enum BatteryControlCLI {
         /// release. Nothing is downloaded or installed.
         case updateCheck
         case help
+
+        /// The CLI safety model, pinned here so every command (present and
+        /// future) is classified in exactly one place. Exhaustively tested in
+        /// `CLICommandTests`; adding a case forces an explicit decision.
+        ///
+        /// **Read-only** commands inspect state and must stay frictionless for
+        /// scripts, cron, and agent tooling — no flags, no prompts, ever.
+        ///
+        /// **State-changing** commands split by consequence:
+        ///
+        /// 1. *Persistent policy changes that remove or weaken a deliberate
+        ///    limit* (`limit off`, `uninstall`) require an explicit `--confirm`
+        ///    flag. A cron job, stale script, or agent must not be able to
+        ///    silently destroy the user's chosen policy.
+        /// 2. *Safety-floor violations* (`discharge start` below the 20%
+        ///    floor) require `--allow-below-floor`.
+        /// 3. *Bounded, self-terminating sessions* (`discharge start` above the
+        ///    floor, `charge start`, `calibration start`) are deliberately NOT
+        ///    gated: they end on their own or via their stop/cancel command,
+        ///    restore prior state, and never alter stored policy. Gating them
+        ///    would block the documented "drain to 60% before travel" style
+        ///    workflows without preventing any policy loss.
+        /// 4. *Safe-direction changes* (`limit set`, `discharge stop`,
+        ///    `charge stop`, `calibration cancel`) establish or restore
+        ///    protection rather than remove it, and are idempotent.
+        /// 5. `database install` is validated client-side, re-validated by the
+        ///    daemon, and by design only broadens recognition — the runtime
+        ///    probe and readback verification remain the actual write gate, so
+        ///    it cannot enable an unsafe write.
+        ///
+        /// There is deliberately no interactive prompting anywhere in the CLI:
+        /// unattended callers get deterministic exit codes, never a hang.
+        public var isReadOnly: Bool {
+            switch self {
+            case .status, .limitStatus, .dischargeStatus, .calibrationStatus,
+                 .diagnostics, .compatibility, .compatibilityReport,
+                 .version, .updateCheck, .help:
+                return true
+            case .limitSet, .limitOff, .dischargeStart, .dischargeStop,
+                 .chargeStart, .chargeStop, .calibrationStart, .calibrationCancel,
+                 .databaseInstall, .uninstall:
+                return false
+            }
+        }
     }
 
     // MARK: - Errors
@@ -96,7 +144,14 @@ public enum BatteryControlCLI {
             case "status":
                 return .limitStatus
             case "off":
-                return .limitOff
+                var confirm = false
+                for arg in rest {
+                    switch arg {
+                    case "--confirm": confirm = true
+                    default: throw UsageError("limit off accepts no arguments other than --confirm")
+                    }
+                }
+                return .limitOff(confirm: confirm)
             case "set":
                 return try parseLimitSet(rest)
             default:
@@ -311,7 +366,8 @@ public enum BatteryControlCLI {
       limit status                    Current charge-limit policy and hardware state
       limit set <pct>                 Set the Fixed Charge Limit (e.g. 80)
         --resume <pct>                Optional custom lower limit (hysteresis)
-      limit off                       Remove the limit (macOS default charging)
+      limit off                       Remove the limit (macOS default charging);
+                                      requires --confirm while a limit is active
       discharge status                Force-discharge session state
       discharge start <pct>           Run on battery down to <pct> while on AC
         --floor <pct>                 Custom stop floor (default 20%)
@@ -340,8 +396,21 @@ public enum BatteryControlCLI {
       write SMC keys directly. Every operation is validated and verified by
       the daemon, which never reports a limit as active without readback.
 
-      Discharging below the 20% safety floor requires --allow-below-floor and
-      accelerates battery degradation. Consent applies to that session only.
+      Read-only commands (status, limit status, discharge status,
+      diagnostics, compatibility, version, update-check) change nothing and
+      are always safe for scripts and automation.
+
+      Persistent policy changes require explicit acknowledgement:
+      'limit off --confirm' and 'uninstall --confirm'. Cron jobs, stale
+      scripts, and unattended callers cannot silently remove a deliberate
+      limit. Discharging below the 20% safety floor additionally requires
+      --allow-below-floor and accelerates battery degradation; consent
+      applies to that session only.
+
+      Session operations (discharge start above the floor, charge start,
+      calibration start) are bounded: they end on their own or via their
+      stop/cancel command, restore prior state, and never alter your stored
+      policy.
 
       Hardware/firmware that BatteryControl does not recognize stays in
       read-only diagnostics mode; controls report honestly instead of acting.

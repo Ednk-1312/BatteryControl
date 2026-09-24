@@ -55,6 +55,21 @@ final class DailyUseModelsTests: XCTestCase {
         XCTAssertEqual(ChargePreset.matching(policy: .passthrough()), .fullCharge)
     }
 
+    /// `applicableCases` must contain exactly the presets that can be
+    /// applied. Regression: the preset picker iterated `allCases`, which
+    /// rendered `.custom` — a case whose `policy` is nil by design — as a
+    /// button that silently did nothing when clicked.
+    func testApplicableCasesExcludesCustom() {
+        let applicable = ChargePreset.applicableCases
+        XCTAssertEqual(Set(applicable), Set([.daily, .batterySaver, .chronicallyPluggedIn, .fullCharge]))
+        XCTAssertNil(ChargePreset.custom.policy)
+        // Every applicable case must actually produce a policy — otherwise
+        // a picker button would again be dead.
+        for preset in applicable {
+            XCTAssertNotNil(preset.policy, "\(preset) claims applicable but has no policy")
+        }
+    }
+
     func testHistoryIsBoundedAndClearable() {
         let history = LocalEventHistory(maximumCount: 2)
         history.append(BatteryControlEvent(kind: "a", detail: "1"))

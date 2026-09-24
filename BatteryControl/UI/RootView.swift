@@ -36,7 +36,17 @@ struct RootView: View {
             .navigationTitle("BatteryControl")
         } detail: {
             VStack(spacing: 0) {
-                if appState.needsSetup && appState.isSupported {
+                // A stale process (app upgraded while running) supersedes the
+                // setup banner: the helper is fine — this process is the
+                // outdated component. Showing "Repair Helper" here was the
+                // contradiction on the dashboard (banner + "Active &
+                // verified" tiles at once) and offered an action that could
+                // never fix the actual problem.
+                if HelperStatusDerivation.shouldShowSetupBanner(
+                    needsSetup: appState.needsSetup,
+                    isSupported: appState.isSupported,
+                    isStaleProcess: appState.isStaleProcess
+                ) {
                     SetupBanner()
                 }
                 if !appState.isSupported {
@@ -76,9 +86,15 @@ struct SetupBanner: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Privileged helper required")
                     .font(.headline)
-                Text("BatteryControl needs a small privileged helper to control charging. It runs in the background and enforces your limits even when this app is closed.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                if appState.helperStatus == .outdated {
+                    Text("The privileged helper is an older version than this app. Reopen BatteryControl after updating — if the banner persists, Repair Helper will bring the helper up to date.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("BatteryControl needs a small privileged helper to control charging. It runs in the background and enforces your limits even when this app is closed.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 if let progress = appState.installProgress {
                     Text(progress)
                         .font(.caption)

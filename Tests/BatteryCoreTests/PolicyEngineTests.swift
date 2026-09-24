@@ -175,6 +175,33 @@ final class PolicyEngineTests: XCTestCase {
         XCTAssertFalse(ChargingPolicyEngine.requiresBelowFloorConsent(floor: 20))
     }
 
+    /// The UI's "Remove safety floor" switch must mirror the daemon's
+    /// per-session consent, never a stale local toggle. Regression: the
+    /// discharge view kept the switch on after a session ended or the
+    /// user re-opened the view, presenting consent as fact when the daemon
+    /// held none.
+    func testUIConsentStateMirrorsSessionOnly() {
+        // Active below-floor session with consent → switch on.
+        XCTAssertTrue(ChargingPolicyEngine.uiConsentState(
+            override: .forceDischarge(targetPercent: 10, floorPercent: 5, belowFloorConsent: true),
+            isForceDischarging: true
+        ))
+        // Active session WITHOUT consent (normal session) → switch off,
+        // even if a stale UI toggle said otherwise.
+        XCTAssertFalse(ChargingPolicyEngine.uiConsentState(
+            override: .forceDischarge(targetPercent: 60, floorPercent: 20, belowFloorConsent: false),
+            isForceDischarging: true
+        ))
+        // No active session (ended, cancelled, reached target) → off.
+        XCTAssertFalse(ChargingPolicyEngine.uiConsentState(override: nil, isForceDischarging: false))
+        XCTAssertFalse(ChargingPolicyEngine.uiConsentState(override: .none, isForceDischarging: false))
+        // A force CHARGE is not a discharge session → off.
+        XCTAssertFalse(ChargingPolicyEngine.uiConsentState(
+            override: .forceCharge(targetPercent: 100),
+            isForceDischarging: false
+        ))
+    }
+
     // MARK: - Force charge override
 
     func testForceChargeChargesBelowTarget() {

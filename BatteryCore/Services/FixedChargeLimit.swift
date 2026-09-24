@@ -70,4 +70,36 @@ public enum FixedChargeLimit {
     public static func explanation(upper: Int, resume: Int) -> String {
         "The battery rests at \(upper)%. If it drifts down to \(resume)%, charging quietly tops it back up to \(upper)% and stops. Enforcement is verified against the battery's actual state."
     }
+
+    /// Whether disabling the active policy changes the charge-limit state
+    /// (and therefore requires explicit acknowledgement), or is a harmless
+    /// no-op. Pure and unit-testable: the CLI's `limit off` gate uses this
+    /// so an unattended `limit off` can never silently remove a deliberate
+    /// limit, while an already-disabled limit stays idempotent.
+    public static func limitOffChangesState(_ policy: ChargingPolicy) -> Bool {
+        policy.mode != .passthrough
+    }
+
+    /// The CLI `limit off` acknowledgement gate. Returns the refusal message
+    /// when the operation must not proceed, or nil when it may.
+    ///
+    /// An unattended invocation (cron, launchd, a stale script, an agent)
+    /// must not be able to silently remove a deliberate charge limit, so a
+    /// state-changing `limit off` requires the explicit `--confirm` flag —
+    /// the same convention as `uninstall --confirm` and
+    /// `discharge start --allow-below-floor`. With no limit active the
+    /// command changes nothing and deliberately needs no confirmation.
+    public static func limitOffRejection(policy: ChargingPolicy, confirm: Bool) -> String? {
+        guard !confirm, limitOffChangesState(policy) else { return nil }
+        return """
+        Rejected: a charge limit (\(policy.summary)) is currently active.
+        Turning it off hands charging back to macOS and removes BatteryControl's
+        enforcement, so it requires explicit confirmation. Re-run with:
+
+          batterycontrol limit off --confirm
+
+        If no limit is active, plain 'batterycontrol limit off' is a no-op
+        and needs no confirmation.
+        """
+    }
 }

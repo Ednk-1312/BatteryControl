@@ -32,12 +32,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Single-instance guard. BatteryControl is a menu-bar accessory, so a
+    /// second launched instance is never useful — it would add a second
+    /// status item, double the polling, and split the UI across two
+    /// processes. `open -n` (or two rapid launches) otherwise happily runs
+    /// duplicates forever. When another instance owns the app, this process
+    /// asks that instance to show its window and exits immediately.
+    ///
+    /// The check is the bundle identifier among GUI apps owned by this
+    /// user, which is robust for this purpose: the daemon is a separate
+    /// executable with a different bundle ID and is never matched.
+    private static func anotherInstanceIsRunning() -> Bool {
+        NSRunningApplication.runningApplications(withBundleIdentifier: "com.batterycontrol.app")
+            .contains { $0 != NSRunningApplication.current }
+    }
+
     /// Accessory from the very first moment — no Dock icon flash at launch.
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Duplicate launch: hand over to the running instance and exit.
+        // Activating first makes the existing instance show its window (the
+        // same reopen path a user expects from clicking the icon again).
+        //
+        // Handoff exception: `relaunchApp()` (stale-process recovery) starts
+        // the new instance BEFORE the old one exits. A naive guard would make
+        // the newborn exit, then the old process terminate — zero instances.
+        // So the duplicate briefly re-checks: if the other instance goes away
+        // within the handoff window, this process continues as the primary;
+        // otherwise it activates the established instance and exits.
+        if Self.anotherInstanceIsRunning() {
+            NSApp.setActivationPolicy(.accessory)
+            let handoffDeadline = Date().addingTimeInterval(6)
+            var tookOver = false
+            while Date() < handoffDeadline {
+                Thread.sleep(forTimeInterval: 0.5)
+                if !Self.anotherInstanceIsRunning() {
+                    tookOver = true
+                    break
+                }
+            }
+            guard !tookOver else {
+                // The previous instance exited mid-handoff; we are the app now.
+                return
+            }
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.batterycontrol.app")
+                .first { $0 != NSRunningApplication.current }?
+                .activate()
+            exit(0)
+        }
+
         // Belt and braces: also assert the policy after launch in case any
         // framework code changed it.
         NSApp.setActivationPolicy(.accessory)

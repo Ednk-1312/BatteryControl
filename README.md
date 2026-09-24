@@ -91,7 +91,7 @@ Two editions, same codebase, same daemon:
 
 To install the GUI edition:
 
-1. Grab `BatteryControl-1.3.1.pkg` from the
+1. Grab `BatteryControl-1.3.2.pkg` from the
    [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest)
    (check it against `SHA256SUMS` if you want).
 2. Run the installer. It puts the app in `/Applications` and the CLI in `/usr/local/bin`.
@@ -163,7 +163,10 @@ batterycontrol status                     # battery, power, limit, verification 
 batterycontrol limit status               # current limit policy and hardware state
 batterycontrol limit set 80               # Fixed Charge Limit at 80% (default hysteresis)
 batterycontrol limit set 80 --resume 70   # custom lower limit
-batterycontrol limit off                  # hand charging back to macOS
+batterycontrol limit off --confirm         # hand charging back to macOS
+                                           # (--confirm required while a limit
+                                           #  is active, so cron/scripts can't
+                                           #  silently remove it)
 batterycontrol discharge status           # force-discharge session state
 batterycontrol discharge start 60         # run on battery down to 60% while on AC
 batterycontrol discharge stop             # end the discharge, restore adapter input
@@ -186,6 +189,10 @@ batterycontrol help                       # usage
 `discharge start` takes `--floor <pct>` (default 20%) and `--allow-below-floor` for
 draining below the floor. The output warns you it wears the battery out, and the daemon
 enforces the consent requirement itself — a client can't skip it.
+
+`limit off` behaves the same way when a limit is active: it refuses without `--confirm`.
+That keeps cron jobs, stale scripts, and other unattended callers from silently removing
+a deliberate limit. With no limit active it stays a harmless no-op that needs no flag.
 
 The menu bar also exposes 1-hour and 2-hour temporary charge overrides. The daemon stores
 that deadline atomically, so a restart does not extend an expired override. If the saved
@@ -355,13 +362,13 @@ so it can be tested without hardware.
 
 ## Release artifacts
 
-`scripts/build-release.sh 1.3.1` builds everything into `dist/`:
+`scripts/build-release.sh 1.3.2` builds everything into `dist/`:
 
 | File | Contents |
 |---|---|
-| `BatteryControl-1.3.1.pkg` | App + CLI + embedded daemon |
-| `BatteryControlCLI-1.3.1.pkg` | Just the CLI, no daemon |
-| `BatteryControl-1.3.1.zip` | The app + CLI as a zip |
+| `BatteryControl-1.3.2.pkg` | App + CLI + embedded daemon |
+| `BatteryControlCLI-1.3.2.pkg` | Just the CLI, no daemon |
+| `BatteryControl-1.3.2.zip` | The app + CLI as a zip |
 | `SHA256SUMS` | Hashes of all three |
 
 The script also expands the packages and checks their contents (the CLI package must

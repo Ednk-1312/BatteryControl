@@ -213,7 +213,7 @@ struct DashboardView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.yellow)
-                    Text("The last control change has not been verified yet. The state is checked continuously and retried a limited number of times.")
+                    Text("The last control change has not been verified yet. The state is re-checked automatically — after a charge change the battery's firmware can take a couple of minutes to report it. If this warning survives several minutes, see Diagnostics.")
                         .font(.callout)
                     Spacer()
                 }

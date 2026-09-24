@@ -27,8 +27,8 @@ public enum CLIRunner {
             return await limitStatus()
         case .limitSet(let upper, let resume):
             return await limitSet(upper: upper, resume: resume)
-        case .limitOff:
-            return await limitOff()
+        case .limitOff(let confirm):
+            return await limitOff(confirm: confirm)
         case .dischargeStatus:
             return await dischargeStatus()
         case .dischargeStart(let target, let floor, let consent):
@@ -145,11 +145,33 @@ public enum CLIRunner {
         }
     }
 
-    private static func limitOff() async -> (String, BatteryControlCLI.ExitCode) {
-        guard let ack = await DaemonXPCClient.shared.applyPolicy(.passthrough()) else {
-            return (communicationFailure(), .communicationFailure)
+    /// Disabling an active charge limit is a state-changing operation that
+    /// cron, launchd, or a stale script must not be able to perform
+    /// silently, so it requires explicit acknowledgement (`--confirm`) —
+    /// the same convention as `uninstall --confirm`. With no limit active
+    /// the command is a harmless no-op and deliberately needs no flag.
+    private static func limitOff(confirm: Bool) async -> (String, BatteryControlCLI.ExitCode) {
+        let daemonState = await daemonState()
+        switch daemonState {
+        case .unavailable(let explanation):
+            return (explanation, .daemonUnavailable)
+        case .available(let response):
+            // Decide from the daemon's authoritative policy, never from
+            // local caches. A hysteresis/fixed-target limit is active → an
+            // unconfirmed request must fail safely before any XPC write.
+            // The decision is pure (FixedChargeLimit.limitOffRejection) so
+            // the refusal is unit-testable without a daemon.
+            if let rejection = FixedChargeLimit.limitOffRejection(
+                policy: response.snapshot.activePolicy,
+                confirm: confirm
+            ) {
+                return (rejection, .safetyRejection)
+            }
+            guard let ack = await DaemonXPCClient.shared.applyPolicy(.passthrough()) else {
+                return (communicationFailure(), .communicationFailure)
+            }
+            return (renderAck(ack), ack.accepted ? .success : .safetyRejection)
         }
-        return (renderAck(ack), ack.accepted ? .success : .safetyRejection)
     }
 
     // MARK: - Discharge
