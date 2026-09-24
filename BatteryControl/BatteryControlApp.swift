@@ -125,8 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: Main window
 
     /// Show (creating if needed) the main window and bring it to front.
+    /// Navigation is deliberately untouched: resetting the route here yanked
+    /// the user out of whatever pane they were using every time a reopen
+    /// event or menu-bar action fired mid-task.
     @objc func openMainWindow() {
-        appState.route = .dashboard
         let controller: NSWindowController
         if let existing = mainWindowController {
             controller = existing

@@ -9,27 +9,22 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: Binding(
-                get: { appState.route },
-                set: { appState.route = $0 ?? .dashboard }
-            )) {
+            // Plain button rows, not `List(selection:)`. The selection-based
+            // sidebar desynced from the route binding on macOS 15 (clicks
+            // stopped registering after entering a pane), stranding the user
+            // in that pane — the only escape was relaunching. A button is a
+            // stateless action on the route, so navigation cannot wedge.
+            List {
                 Section {
-                    Label("Dashboard", systemImage: "gauge.with.dots.needle.67percent")
-                        .tag(AppState.Route.dashboard)
-                    Label("Charging", systemImage: "bolt.fill")
-                        .tag(AppState.Route.charging)
-                    Label("Discharge", systemImage: "bolt.slash.fill")
-                        .tag(AppState.Route.discharge)
-                    Label("Calibration", systemImage: "arrow.triangle.2.circlepath")
-                        .tag(AppState.Route.calibration)
+                    sidebarRow(.dashboard, "Dashboard", "gauge.with.dots.needle.67percent")
+                    sidebarRow(.charging, "Charging", "bolt.fill")
+                    sidebarRow(.discharge, "Discharge", "bolt.slash.fill")
+                    sidebarRow(.calibration, "Calibration", "arrow.triangle.2.circlepath")
                 }
                 Section("Reference") {
-                    Label("Battery Info", systemImage: "info.circle")
-                        .tag(AppState.Route.info)
-                    Label("Diagnostics", systemImage: "stethoscope")
-                        .tag(AppState.Route.diagnostics)
-                    Label("Settings", systemImage: "gearshape")
-                        .tag(AppState.Route.settings)
+                    sidebarRow(.info, "Battery Info", "info.circle")
+                    sidebarRow(.diagnostics, "Diagnostics", "stethoscope")
+                    sidebarRow(.settings, "Settings", "gearshape")
                 }
             }
             .listStyle(.sidebar)
@@ -56,6 +51,24 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 760, minHeight: 560)
+    }
+
+    /// One sidebar entry: full-row hit area, selected row visibly marked.
+    private func sidebarRow(_ route: AppState.Route, _ title: String, _ systemImage: String) -> some View {
+        let isSelected = appState.route == route
+        return Button {
+            appState.route = route
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+        .background(
+            isSelected ? Color.accentColor.opacity(0.12) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
     }
 
     @ViewBuilder

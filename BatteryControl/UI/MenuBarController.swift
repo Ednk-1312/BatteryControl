@@ -217,7 +217,6 @@ final class MenuBarController {
     }
 
     @objc private func openMainWindow() {
-        appState?.route = .dashboard
         NotificationCenter.default.post(name: .openMainWindowRequested, object: nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -228,6 +227,9 @@ final class MenuBarController {
     }
 
     @objc private func openCharging() {
+        // Set the route, then open the window without letting it reset
+        // navigation back to the dashboard — the old sequence overwrote
+        // .charging with .dashboard before the window ever appeared.
         appState?.route = .charging
         openMainWindow()
     }
