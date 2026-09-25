@@ -1,9 +1,10 @@
 # Contributing to BatteryControl
 
-> **Status: discontinued.** 1.3.4 is the final release. Issues and pull requests may go
-> unanswered, and there will be no further releases for new compatibility reports to land
-> in. Everything below still applies to anyone forking the project — the capability,
-> verification, and safety rules here are why the code can be trusted.
+> **Status: no longer actively developed.** 1.3.4 is the last planned release, and issues
+> and pull requests may sit unanswered — there are no scheduled releases for new
+> compatibility reports to land in. Everything below still applies to anyone forking the
+> project — the capability, verification, and safety rules here are why the code can be
+> trusted.
 
 Thank you for helping build a general-purpose, hardware-evidence-backed battery-control
 utility for Apple Silicon Macs on macOS 14, 15, 26, or 27. There are two very different ways to

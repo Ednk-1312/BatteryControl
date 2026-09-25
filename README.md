@@ -12,21 +12,21 @@ menu-bar icon is hidden, the Mac is asleep, or it just woke up.
 It's a normal macOS app plus a `batterycontrol` command. A small privileged daemon does
 the hardware work; the app and CLI just talk to it.
 
-## Status: discontinued
+## Status: no longer actively developed
 
-**1.3.4 is the final release, and it's the same source code as 1.3.3** — this notice and
-the version numbers are the only changes. The project is discontinued; the repo stays up
-so the code, the docs, and the compatibility evidence remain available. If someone needs
-support on it and asks, I may pick it back up — plan as if I won't.
+Development on BatteryControl has stopped. 1.3.4 is the same source code as 1.3.3 — this
+notice and the version numbers are the only changes — and it's the last planned release.
+The repo stays up and the project isn't going anywhere: the code, the docs, and the
+compatibility evidence remain available. If someone needs support on it, that's the kind
+of thing that could bring development back — but until that happens, expect no new
+releases, fixes, or features, and don't be surprised if issues and pull requests sit
+unanswered.
 
-Why stop here: I wrote BatteryControl because macOS had no way to hold a charge below
-80%. macOS 26 now ships Apple's own Charge Limit (System Settings → Battery, 80–100%),
-my Mac is on it, and it covers what I needed — so I uninstalled the app and I'm done
-maintaining this one.
+Why: I wrote BatteryControl because macOS had no way to hold a charge below 80%. macOS 26
+now ships Apple's own Charge Limit (System Settings → Battery, 80–100%), my Mac is on it,
+and it covers what I needed — so I uninstalled the app and moved on.
 
-What that means:
-
-- No new releases, fixes, or features. Issues and pull requests may go unanswered.
+What still holds:
 - Security reports still go through [private vulnerability
   reporting](https://github.com/Ednk-1312/BatteryControl/security/advisories/new) and are
   read — but with no planned releases, a fix can't be promised. Read the compatibility
@@ -39,7 +39,7 @@ What that means:
   on every write, and honest state reporting. They're what keep an SMC-writing tool from
   lying to you.
 
-One honesty note on this final build: the binaries were recompiled with Xcode 26.3 on
+One honesty note on this build: the binaries were recompiled with Xcode 26.3 on
 macOS 26 and the full test suite passes, but the app is no longer installed on my
 machine, so nothing here was re-validated against real battery hardware. What was
 physically tested remains exactly what the compatibility section says: one M3 MacBook Air
@@ -527,11 +527,12 @@ verification sessions only). `--diag-smc` is read-only and reports the detected 
 
 ## Contributing
 
-The project is discontinued (see [Status](#status-discontinued)), so reports and pull
-requests may sit unanswered, and nothing new will be merged into a release. The rules in
-[CONTRIBUTING.md](CONTRIBUTING.md) still matter if you fork this: capability detection at
-runtime only (never model/OS-based), readback verification on every write path, honest
-state reporting, and tests for anything that touches selection/classification/validation.
+Development has stopped (see [Status](#status-no-longer-actively-developed)), so reports
+and pull requests may sit unanswered, and there are no scheduled releases to merge
+anything into. The rules in [CONTRIBUTING.md](CONTRIBUTING.md) still matter if you fork
+this: capability detection at runtime only (never model/OS-based), readback verification
+on every write path, honest state reporting, and tests for anything that touches
+selection/classification/validation.
 
 ## License
 
