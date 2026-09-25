@@ -18,6 +18,12 @@ an upgrade is the fix, not just the advisory.
 | Earlier releases | no — upgrade |
 | `main` | yes (pre-release) |
 
+**Final release note:** BatteryControl is discontinued and 1.3.4 is its final release;
+`main` will not see further development. Private reports are still read, but with no
+planned releases a fix can no longer be promised — state the impact plainly, because a
+serious report is also the most likely thing to bring the project back for one more fix.
+The table above describes how the project handled security while it was active.
+
 ## Reporting a vulnerability
 
 Please do **not** open a public issue for anything you believe is a security

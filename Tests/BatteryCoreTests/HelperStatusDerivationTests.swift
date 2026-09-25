@@ -12,7 +12,7 @@ import XCTest
 /// running process was the outdated component).
 final class HelperStatusDerivationTests: XCTestCase {
 
-    private let expected = "1.3.3"
+    private let expected = "1.3.4"
 
     // MARK: Stale process — the upgrade-while-running case
 

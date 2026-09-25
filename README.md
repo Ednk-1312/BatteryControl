@@ -12,6 +12,39 @@ menu-bar icon is hidden, the Mac is asleep, or it just woke up.
 It's a normal macOS app plus a `batterycontrol` command. A small privileged daemon does
 the hardware work; the app and CLI just talk to it.
 
+## Status: discontinued
+
+**1.3.4 is the final release, and it's the same source code as 1.3.3** — this notice and
+the version numbers are the only changes. The project is discontinued; the repo stays up
+so the code, the docs, and the compatibility evidence remain available. If someone needs
+support on it and asks, I may pick it back up — plan as if I won't.
+
+Why stop here: I wrote BatteryControl because macOS had no way to hold a charge below
+80%. macOS 26 now ships Apple's own Charge Limit (System Settings → Battery, 80–100%),
+my Mac is on it, and it covers what I needed — so I uninstalled the app and I'm done
+maintaining this one.
+
+What that means:
+
+- No new releases, fixes, or features. Issues and pull requests may go unanswered.
+- Security reports still go through [private vulnerability
+  reporting](https://github.com/Ednk-1312/BatteryControl/security/advisories/new) and are
+  read — but with no planned releases, a fix can't be promised. Read the compatibility
+  section and its caveats before trusting the last build with your battery.
+- On macOS 26.4+, Apple's built-in Charge Limit is the supported way to cap at 80–100%.
+  Below 80%, this last release still works as documented on the hardware described in the
+  compatibility section — with the same one-machine validation caveat it always had.
+- It's MIT, so forks are welcome. If you take it further, keep the rules in
+  [CONTRIBUTING.md](CONTRIBUTING.md): runtime capability detection, readback verification
+  on every write, and honest state reporting. They're what keep an SMC-writing tool from
+  lying to you.
+
+One honesty note on this final build: the binaries were recompiled with Xcode 26.3 on
+macOS 26 and the full test suite passes, but the app is no longer installed on my
+machine, so nothing here was re-validated against real battery hardware. What was
+physically tested remains exactly what the compatibility section says: one M3 MacBook Air
+on macOS 15.8.
+
 ## What it does
 
 - **Charge limit.** Pick a preset (50/60/70/75/80/85/90/95/100%) or a custom value. Charging
@@ -91,7 +124,7 @@ Two editions, same codebase, same daemon:
 
 To install the GUI edition:
 
-1. Grab `BatteryControl-1.3.3.pkg` from the
+1. Grab `BatteryControl-1.3.4.pkg` from the
    [latest release](https://github.com/Ednk-1312/BatteryControl/releases/latest)
    (check it against `SHA256SUMS` if you want).
 2. Run the installer. It puts the app in `/Applications` and the CLI in `/usr/local/bin`.
@@ -362,13 +395,13 @@ so it can be tested without hardware.
 
 ## Release artifacts
 
-`scripts/build-release.sh 1.3.3` builds everything into `dist/`:
+`scripts/build-release.sh 1.3.4` builds everything into `dist/`:
 
 | File | Contents |
 |---|---|
-| `BatteryControl-1.3.3.pkg` | App + CLI + embedded daemon |
-| `BatteryControlCLI-1.3.3.pkg` | Just the CLI, no daemon |
-| `BatteryControl-1.3.3.zip` | The app + CLI as a zip |
+| `BatteryControl-1.3.4.pkg` | App + CLI + embedded daemon |
+| `BatteryControlCLI-1.3.4.pkg` | Just the CLI, no daemon |
+| `BatteryControl-1.3.4.zip` | The app + CLI as a zip |
 | `SHA256SUMS` | Hashes of all three |
 
 The script also expands the packages and checks their contents (the CLI package must
@@ -494,15 +527,11 @@ verification sessions only). `--diag-smc` is read-only and reports the detected 
 
 ## Contributing
 
-The most useful thing you can send me is a compatibility report — run
-`batterycontrol compatibility --report` (or the app's Diagnostics → Export
-Compatibility Report) and open an issue with the JSON using the Compatibility report
-template. That's what grows the list of machines this actually works on.
-
-Code contributions are welcome too. The rules that matter: capability detection at
+The project is discontinued (see [Status](#status-discontinued)), so reports and pull
+requests may sit unanswered, and nothing new will be merged into a release. The rules in
+[CONTRIBUTING.md](CONTRIBUTING.md) still matter if you fork this: capability detection at
 runtime only (never model/OS-based), readback verification on every write path, honest
 state reporting, and tests for anything that touches selection/classification/validation.
-Details in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
